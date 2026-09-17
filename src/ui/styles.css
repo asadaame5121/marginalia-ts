@@ -1,0 +1,217 @@
+/* ==========================================================================
+   Marginalia & Highlight UI Styles
+   ========================================================================== */
+
+:root {
+  --marginalia-highlight-bg: rgba(254, 240, 138, 0.6);
+  --marginalia-highlight-border: #facc15;
+  --marginalia-highlight-active: rgba(253, 224, 71, 0.9);
+  --marginalia-card-bg: #ffffff;
+  --marginalia-card-border: #e2e8f0;
+  --marginalia-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --marginalia-text-main: #1e293b;
+  --marginalia-text-muted: #64748b;
+  --marginalia-primary: #2563eb;
+  --marginalia-primary-hover: #1d4ed8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --marginalia-highlight-bg: rgba(234, 179, 8, 0.3);
+    --marginalia-highlight-border: #ca8a04;
+    --marginalia-highlight-active: rgba(234, 179, 8, 0.5);
+    --marginalia-card-bg: #1e293b;
+    --marginalia-card-border: #334155;
+    --marginalia-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    --marginalia-text-main: #f8fafc;
+    --marginalia-text-muted: #94a3b8;
+    --marginalia-primary: #3b82f6;
+    --marginalia-primary-hover: #60a5fa;
+  }
+}
+
+/* テキストハイライト (<mark>) */
+mark.marginalia-highlight {
+  background-color: var(--marginalia-highlight-bg);
+  border-bottom: 2px solid var(--marginalia-highlight-border);
+  color: inherit;
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 2px;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+mark.marginalia-highlight:hover,
+mark.marginalia-highlight.is-active {
+  background-color: var(--marginalia-highlight-active);
+}
+
+/* インラインコメントトグルバッジ */
+button.marginalia-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85em;
+  padding: 0 4px;
+  margin-left: 2px;
+  vertical-align: middle;
+  opacity: 0.7;
+  transition: opacity 0.2s ease, transform 0.15s ease;
+  user-select: none;
+}
+
+button.marginalia-badge:hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+/* マージナリア（余白・インライン注釈カード） */
+.marginalia-card {
+  display: none;
+  background: var(--marginalia-card-bg);
+  border: 1px solid var(--marginalia-card-border);
+  border-radius: 8px;
+  box-shadow: var(--marginalia-card-shadow);
+  padding: 12px 14px;
+  margin: 8px 0 16px 0;
+  font-size: 0.9em;
+  line-height: 1.5;
+  color: var(--marginalia-text-main);
+  animation: marginalia-fade-in 0.2s ease;
+}
+
+.marginalia-card.is-active {
+  display: block;
+}
+
+.marginalia-card-header {
+  font-size: 0.75em;
+  color: var(--marginalia-text-muted);
+  margin-bottom: 6px;
+}
+
+.marginalia-card-body {
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* PC等のワイド画面では右余白にフローティング表示可能 */
+@media (min-width: 1024px) {
+  .marginalia-container-with-sidebar {
+    position: relative;
+  }
+  .marginalia-container-with-sidebar .marginalia-card {
+    position: absolute;
+    right: -280px;
+    width: 250px;
+    margin: 0;
+    z-index: 10;
+  }
+}
+
+/* 選択時ツールバー（ポップオーバーツールチップ） */
+.marginalia-toolbar {
+  position: absolute;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--marginalia-card-bg);
+  border: 1px solid var(--marginalia-card-border);
+  border-radius: 6px;
+  box-shadow: var(--marginalia-card-shadow);
+  padding: 4px;
+  animation: marginalia-fade-in 0.15s ease;
+  user-select: none;
+}
+
+.marginalia-toolbar button {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--marginalia-text-main);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s;
+}
+
+.marginalia-toolbar button:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  .marginalia-toolbar button:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* コメント入力用ポップオーバー */
+.marginalia-popover {
+  position: absolute;
+  z-index: 10000;
+  background: var(--marginalia-card-bg);
+  border: 1px solid var(--marginalia-card-border);
+  border-radius: 8px;
+  box-shadow: var(--marginalia-card-shadow);
+  padding: 10px;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.marginalia-popover textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--marginalia-card-border);
+  border-radius: 4px;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  background: transparent;
+  color: var(--marginalia-text-main);
+  resize: vertical;
+  min-height: 60px;
+}
+
+.marginalia-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.marginalia-popover button.btn-submit {
+  background: var(--marginalia-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.marginalia-popover button.btn-submit:hover {
+  background: var(--marginalia-primary-hover);
+}
+
+.marginalia-popover button.btn-cancel {
+  background: transparent;
+  border: 1px solid var(--marginalia-card-border);
+  color: var(--marginalia-text-muted);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+@keyframes marginalia-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

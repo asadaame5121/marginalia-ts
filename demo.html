@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marginalia & Text Fragment デモ</title>
+  <link rel="stylesheet" href="./dist/marginalia.css">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.8;
+      color: #333;
+      max-width: 680px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    header {
+      border-bottom: 1px solid #eee;
+      padding-bottom: 20px;
+      margin-bottom: 30px;
+    }
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 8px;
+    }
+    .description {
+      color: #666;
+      font-size: 0.95rem;
+    }
+    article p {
+      margin-bottom: 1.5em;
+    }
+    .controls {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #eee;
+      display: flex;
+      gap: 10px;
+    }
+    .btn-reset {
+      padding: 6px 12px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>Marginalia & Fragmention 統合デモ</h1>
+    <p class="description">
+      任意の文章をドラッグ選択するとツールチップが表示されます。<br>
+      「ハイライト」「コメント」「リンク」をお試しください。保存された注釈はリロードしても保持されます。
+    </p>
+  </header>
+
+  <main>
+    <article id="post-content">
+      <p>
+        吾輩は猫である。名前はまだ無い。どこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所でニャーニャー泣いていた事だけは記憶している。吾輩はここで始めて人間というものを見た。
+      </p>
+      <p>
+        しかもあとで聞くとそれは書生という人間中で一番獰悪な種族であったそうだ。この書生というのは時々我々を捕えて煮て食うという話である。しかしその当時は何という考もなかったから別段恐しいとも思わなかった。ただ彼の掌に載せられてスーと持ち上げられた時何だかフワフワした感じがあったばかりである。
+      </p>
+      <p>
+        掌の上で少し落ちついて書生の顔を見たのがいわゆる人間というものの見始であろう。この時妙なものだと思った感じが今でも残っている。第一毛をもって装飾されべきはずの顔がつるつるしてまるで薬缶だ。その後猫にも大分逢ったがこんな片輪には一度も出会わした事がない。
+      </p>
+    </article>
+  </main>
+
+  <div class="controls">
+    <button class="btn-reset" id="btn-clear-storage">保存データをクリア</button>
+  </div>
+
+  <script type="module">
+    import { createMarginalia } from "./dist/marginalia.esm.js";
+
+    const STORAGE_KEY = "demo_annotations";
+    const postContent = document.getElementById("post-content");
+
+    // 疑似 Deno KV (localStorage)
+    function loadSavedAnnotations() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveAnnotationToStorage(anno) {
+      const list = loadSavedAnnotations();
+      list.push(anno);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      console.log("Deno KV (疑似) に保存完了:", anno);
+    }
+
+    // Marginalia の初期化
+    const marginalia = createMarginalia({
+      container: postContent,
+      onAnnotate: async (annotation) => {
+        saveAnnotationToStorage(annotation);
+      }
+    });
+
+    // 保存済みのアノテーションを復元・レンダリング
+    const savedList = loadSavedAnnotations();
+    marginalia.render(savedList);
+
+    // クリアボタン
+    document.getElementById("btn-clear-storage").addEventListener("click", () => {
+      localStorage.removeItem(STORAGE_KEY);
+      location.reload();
+    });
+  </script>
+</body>
+</html>
