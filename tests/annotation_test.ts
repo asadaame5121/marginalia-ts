@@ -167,3 +167,42 @@ Deno.test("Annotation - validateAnnotation 厳密化チェック", () => {
   assertEquals(validateAnnotation(customLimitAnno, { maxCommentLength: 10 }).valid, true);
 });
 
+Deno.test("Annotation - createCommentAnnotation with creator & validateAnnotation", () => {
+  // 1. author のみ指定
+  const annoWithName = createCommentAnnotation({
+    source: "https://example.com/page",
+    selector: { exact: "テスト" },
+    comment: "コメント",
+    author: "山田太郎",
+  });
+  assertEquals(annoWithName.creator?.name, "山田太郎");
+  assertEquals(annoWithName.creator?.url, undefined);
+  assertEquals(validateAnnotation(annoWithName).valid, true);
+
+  // 2. author と url を両方指定
+  const annoWithNameAndUrl = createCommentAnnotation({
+    source: "https://example.com/page",
+    selector: { exact: "テスト" },
+    comment: "コメント",
+    author: "山田太郎",
+    url: "https://example.com/yamada",
+  });
+  assertEquals(annoWithNameAndUrl.creator?.name, "山田太郎");
+  assertEquals(annoWithNameAndUrl.creator?.url, "https://example.com/yamada");
+  assertEquals(validateAnnotation(annoWithNameAndUrl).valid, true);
+
+  // 3. 不正な creator の検証 (name が空)
+  const badCreatorName = {
+    ...annoWithName,
+    creator: { type: "Person", name: "   " },
+  };
+  assertEquals(validateAnnotation(badCreatorName).valid, false);
+
+  // 4. 不正な creator の検証 (url が非文字列)
+  const badCreatorUrl = {
+    ...annoWithName,
+    creator: { type: "Person", name: "山田太郎", url: 123 },
+  };
+  assertEquals(validateAnnotation(badCreatorUrl).valid, false);
+});
+

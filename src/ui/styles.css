@@ -88,9 +88,27 @@ button.marginalia-badge:hover {
 }
 
 .marginalia-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-size: 0.75em;
   color: var(--marginalia-text-muted);
   margin-bottom: 6px;
+  gap: 8px;
+}
+
+.marginalia-card-author {
+  font-weight: 600;
+  color: var(--marginalia-text-main);
+}
+
+.marginalia-card-author a {
+  color: var(--marginalia-primary);
+  text-decoration: none;
+}
+
+.marginalia-card-author a:hover {
+  text-decoration: underline;
 }
 
 .marginalia-card-body {
@@ -167,16 +185,29 @@ button.marginalia-badge:hover {
   gap: 8px;
 }
 
+.marginalia-popover input[type="text"],
+.marginalia-popover input[type="url"],
 .marginalia-popover textarea {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid var(--marginalia-card-border);
   border-radius: 4px;
-  padding: 8px;
+  padding: 6px 8px;
   font-family: inherit;
   font-size: 13px;
   background: transparent;
   color: var(--marginalia-text-main);
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.marginalia-popover input[type="text"]:focus,
+.marginalia-popover input[type="url"]:focus,
+.marginalia-popover textarea:focus {
+  border-color: var(--marginalia-primary);
+}
+
+.marginalia-popover textarea {
   resize: vertical;
   min-height: 60px;
 }

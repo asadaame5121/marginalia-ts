@@ -64,3 +64,53 @@ Deno.test("Marginalia - renderAnnotation で W3CAnnotation をパースしてDOM
   assertEquals(result?.mark.textContent, "春はあけぼの");
   assertEquals(result?.card?.textContent?.includes("枕草子の冒頭です。"), true);
 });
+
+Deno.test("Marginalia - creator (author, url) がカードヘッダーに正しくレンダリングされる", () => {
+  const dom = new JSDOM(`
+    <article id="content">
+      <p id="p1">徒然草の序段です。<mark id="mark1" data-annotation-id="anno-tsure">つれづれなるままに</mark></p>
+    </article>
+  `);
+  const doc = dom.window.document;
+  const mark = doc.getElementById("mark1")!;
+
+  const card = attachMarginaliaCard(mark, {
+    id: "anno-tsure",
+    comment: "有名な一節",
+    created: "2026-09-17T10:00:00Z",
+    author: "兼好法師",
+    authorUrl: "https://example.com/kenko",
+  });
+
+  const authorEl = card.querySelector(".marginalia-card-author");
+  assertNotEquals(authorEl, null);
+  const linkEl = authorEl?.querySelector("a");
+  assertNotEquals(linkEl, null);
+  assertEquals(linkEl?.getAttribute("href"), "https://example.com/kenko");
+  assertEquals(linkEl?.textContent, "兼好法師");
+  assertEquals(linkEl?.getAttribute("target"), "_blank");
+});
+
+Deno.test("Marginalia - 不正なプロトコル(javascript:)を含む authorUrl はリンク化されない (XSS防止)", () => {
+  const dom = new JSDOM(`
+    <article id="content">
+      <p id="p1"><mark id="mark2" data-annotation-id="anno-xss">テキスト</mark></p>
+    </article>
+  `);
+  const doc = dom.window.document;
+  const mark = doc.getElementById("mark2")!;
+
+  const card = attachMarginaliaCard(mark, {
+    id: "anno-xss",
+    comment: "悪意のあるリンクテスト",
+    author: "攻撃者",
+    authorUrl: "javascript:alert(1)",
+  });
+
+  const authorEl = card.querySelector(".marginalia-card-author");
+  assertNotEquals(authorEl, null);
+  const linkEl = authorEl?.querySelector("a");
+  // <a> タグにならずプレーンテキストであること
+  assertEquals(linkEl, null);
+  assertEquals(authorEl?.textContent, "攻撃者");
+});

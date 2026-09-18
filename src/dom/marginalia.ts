@@ -1,11 +1,13 @@
 import type { W3CAnnotation } from "../core/annotation.ts";
 import { highlightSelector } from "./highlighter.ts";
+import { isValidHttpUrl } from "../core/url.ts";
 
 export interface MarginaliaCardOptions {
   id: string;
   comment: string;
   created?: string;
   author?: string;
+  authorUrl?: string;
 }
 
 export interface RenderResult {
@@ -15,7 +17,7 @@ export interface RenderResult {
 
 /**
  * ハイライト要素の近傍に注釈（マージナリア）カードを配置する
- * XSS対策: コメントは必ず textContent を通してプレーンテキストとして安全に設定する
+ * XSS対策: コメントや作者名は必ず textContent を通してプレーンテキストとして安全に設定する
  */
 export function attachMarginaliaCard(
   mark: HTMLElement,
@@ -32,9 +34,27 @@ export function attachMarginaliaCard(
   card.className = "marginalia-card";
   card.setAttribute("data-annotation-id", options.id);
 
-  // コメントヘッダー（作成日時など）
+  // コメントヘッダー（作成日時、投稿者名など）
   const header = doc.createElement("div");
   header.className = "marginalia-card-header";
+
+  if (options.author) {
+    const authorSpan = doc.createElement("span");
+    authorSpan.className = "marginalia-card-author";
+
+    if (options.authorUrl && isValidHttpUrl(options.authorUrl)) {
+      const link = doc.createElement("a");
+      link.href = options.authorUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = options.author;
+      authorSpan.appendChild(link);
+    } else {
+      authorSpan.textContent = options.author;
+    }
+    header.appendChild(authorSpan);
+  }
+
   if (options.created) {
     const time = doc.createElement("time");
     time.textContent = new Date(options.created).toLocaleString();
@@ -114,10 +134,23 @@ export function renderAnnotation(
   let card: HTMLElement | undefined;
 
   if (commentBody && commentBody.value) {
+    let author: string | undefined;
+    let authorUrl: string | undefined;
+    if (annotation.creator) {
+      if (typeof annotation.creator === "string") {
+        author = annotation.creator;
+      } else {
+        author = annotation.creator.name;
+        authorUrl = annotation.creator.url;
+      }
+    }
+
     card = attachMarginaliaCard(mark, {
       id: annotation.id,
       comment: commentBody.value,
       created: annotation.created,
+      author,
+      authorUrl,
     });
   }
 

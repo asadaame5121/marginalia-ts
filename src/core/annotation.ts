@@ -22,6 +22,12 @@ export interface AnnotationTarget {
   selector: TextQuoteSelector;
 }
 
+export interface AnnotationCreator {
+  type?: "Person" | "Organization" | "Software";
+  name: string;
+  url?: string;
+}
+
 export interface W3CAnnotation {
   "@context": "http://www.w3.org/ns/anno.jsonld";
   id: string;
@@ -29,6 +35,7 @@ export interface W3CAnnotation {
   body: TextualBody[];
   target: AnnotationTarget;
   created: string;
+  creator?: AnnotationCreator;
 }
 
 export interface CreateHighlightParams {
@@ -43,6 +50,9 @@ export interface CreateHighlightParams {
 
 export interface CreateCommentParams extends CreateHighlightParams {
   comment: string;
+  author?: string;
+  url?: string;
+  creator?: AnnotationCreator;
 }
 
 /**
@@ -78,6 +88,16 @@ export function createHighlightAnnotation(params: CreateHighlightParams): W3CAnn
  */
 export function createCommentAnnotation(params: CreateCommentParams): W3CAnnotation {
   const id = params.id || `urn:uuid:${crypto.randomUUID()}`;
+  const creator: AnnotationCreator | undefined = params.creator
+    ? params.creator
+    : params.author
+    ? {
+        type: "Person",
+        name: params.author,
+        ...(params.url ? { url: params.url } : {}),
+      }
+    : undefined;
+
   return {
     "@context": "http://www.w3.org/ns/anno.jsonld",
     id,
@@ -100,6 +120,7 @@ export function createCommentAnnotation(params: CreateCommentParams): W3CAnnotat
       },
     },
     created: new Date().toISOString(),
+    ...(creator ? { creator } : {}),
   };
 }
 
@@ -200,6 +221,26 @@ export function validateAnnotation(
           errors.push(`Comment body value exceeds maximum length of ${maxCommentLength} characters`);
         }
       }
+    }
+  }
+
+  // 7. creator (任意)
+  if ("creator" in anno && anno.creator !== undefined) {
+    const creator = anno.creator;
+    if (typeof creator === "string") {
+      if (!creator.trim()) {
+        errors.push("Invalid 'creator' property (must be a non-empty string)");
+      }
+    } else if (typeof creator === "object" && creator !== null && !Array.isArray(creator)) {
+      const creatorObj = creator as Record<string, unknown>;
+      if (typeof creatorObj.name !== "string" || !creatorObj.name.trim()) {
+        errors.push("Invalid or missing 'creator.name' property (must be a non-empty string)");
+      }
+      if (creatorObj.url !== undefined && typeof creatorObj.url !== "string") {
+        errors.push("Invalid 'creator.url' property (must be a string if specified)");
+      }
+    } else {
+      errors.push("Invalid 'creator' property (must be a string or object)");
     }
   }
 

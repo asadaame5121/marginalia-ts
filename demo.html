@@ -50,7 +50,7 @@
     <h1>Marginalia & Fragmention 統合デモ</h1>
     <p class="description">
       任意の文章をドラッグ選択するとツールチップが表示されます。<br>
-      「ハイライト」「コメント」「リンク」をお試しください。保存された注釈はリロードしても保持されます。
+      「ハイライト」「コメント」「リンク」をお試しください。コメントフォームでは名前（必須）とURL（任意）の入力に対応しており、プレースホルダーやコメント機能の解放/閉鎖は <code>config.json</code> で制御されています。
     </p>
   </header>
 
@@ -69,6 +69,10 @@
   </main>
 
   <div class="controls">
+    <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+      <input type="checkbox" id="toggle-comment-feature" checked>
+      コメント機能の解放（チェックを外すと閉鎖）
+    </label>
     <button class="btn-reset" id="btn-clear-storage">保存データをクリア</button>
   </div>
 
@@ -77,6 +81,7 @@
 
     const STORAGE_KEY = "demo_annotations";
     const postContent = document.getElementById("post-content");
+    const toggleComment = document.getElementById("toggle-comment-feature");
 
     // 疑似 Deno KV (localStorage)
     function loadSavedAnnotations() {
@@ -95,17 +100,35 @@
       console.log("Deno KV (疑似) に保存完了:", anno);
     }
 
-    // Marginalia の初期化
-    const marginalia = createMarginalia({
-      container: postContent,
-      onAnnotate: async (annotation) => {
-        saveAnnotationToStorage(annotation);
-      }
-    });
+    let marginalia = null;
 
-    // 保存済みのアノテーションを復元・レンダリング
-    const savedList = loadSavedAnnotations();
-    marginalia.render(savedList);
+    function initMarginalia(commentsEnabled = true) {
+      marginalia?.destroy();
+
+      marginalia = createMarginalia({
+        container: postContent,
+        config: {
+          features: {
+            comments: {
+              enabled: commentsEnabled
+            }
+          }
+        },
+        onAnnotate: async (annotation) => {
+          saveAnnotationToStorage(annotation);
+        }
+      });
+
+      // 保存済みのアノテーションを復元・レンダリング
+      const savedList = loadSavedAnnotations();
+      marginalia.render(savedList);
+    }
+
+    initMarginalia(true);
+
+    toggleComment.addEventListener("change", (e) => {
+      initMarginalia(e.target.checked);
+    });
 
     // クリアボタン
     document.getElementById("btn-clear-storage").addEventListener("click", () => {

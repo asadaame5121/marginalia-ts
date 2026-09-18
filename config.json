@@ -1,0 +1,27 @@
+{
+  "features": {
+    "comments": {
+      "enabled": true
+    }
+  },
+  "form": {
+    "name": {
+      "placeholder": "名前を入力（必須）",
+      "required": true
+    },
+    "url": {
+      "placeholder": "URLを入力 (任意: https://...)",
+      "required": false
+    },
+    "comment": {
+      "placeholder": "コメントを入力...",
+      "required": true
+    }
+  },
+  "messages": {
+    "nameRequired": "名前を入力してください。",
+    "commentRequired": "コメントを入力してください。",
+    "invalidUrl": "有効なURLを入力してください (例: https://example.com)。",
+    "saveFailed": "保存に失敗しました。再試行してください。"
+  }
+}

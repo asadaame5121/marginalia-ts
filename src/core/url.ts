@@ -168,3 +168,16 @@ export function toFragmentionUrl(baseUrl: string, exact: string, index = 0): str
 
   return `${urlWithoutHash}##${formatted}`;
 }
+
+/**
+ * 文字列が http または https プロトコルの有効なURLかを検証する
+ */
+export function isValidHttpUrl(urlString: string): boolean {
+  if (!urlString || typeof urlString !== "string") return false;
+  try {
+    const parsed = new URL(urlString.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}

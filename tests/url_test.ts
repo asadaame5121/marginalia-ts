@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { parseFragment, toTextFragmentUrl, toFragmentionUrl } from "../src/core/url.ts";
+import { parseFragment, toTextFragmentUrl, toFragmentionUrl, isValidHttpUrl } from "../src/core/url.ts";
 
 Deno.test("URL Parser - W3C Text Fragment", () => {
   // exact のみ
@@ -106,4 +106,14 @@ Deno.test("URL Generator - toFragmentionUrl", () => {
 
   const url2 = toFragmentionUrl("https://example.com/post", "hello world", 2);
   assertEquals(url2, "https://example.com/post##hello+world++2");
+});
+
+Deno.test("URL Validator - isValidHttpUrl", () => {
+  assertEquals(isValidHttpUrl("https://example.com"), true);
+  assertEquals(isValidHttpUrl("http://example.com/sub/path?query=1"), true);
+  assertEquals(isValidHttpUrl("javascript:alert(1)"), false);
+  assertEquals(isValidHttpUrl("ftp://example.com"), false);
+  assertEquals(isValidHttpUrl("data:text/plain,hello"), false);
+  assertEquals(isValidHttpUrl(""), false);
+  assertEquals(isValidHttpUrl("not-a-url"), false);
 });
