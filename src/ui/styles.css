@@ -210,6 +210,14 @@ button.marginalia-badge:hover {
   animation: marginalia-pop 0.25s ease-out;
 }
 
+@media (pointer: coarse) {
+  .marginalia-toolbar {
+    position: fixed;
+    inset: auto 12px max(12px, env(safe-area-inset-bottom));
+    overflow-x: auto;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   .marginalia-toolbar button:hover {
     background: rgba(255, 255, 255, 0.1);
