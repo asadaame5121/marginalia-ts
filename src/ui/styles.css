@@ -213,7 +213,10 @@ button.marginalia-badge:hover {
 @media (pointer: coarse) {
   .marginalia-toolbar {
     position: fixed;
-    inset: auto 12px max(12px, env(safe-area-inset-bottom));
+    top: auto !important;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: 12px !important;
     overflow-x: auto;
   }
 }
