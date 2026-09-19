@@ -46,6 +46,33 @@ mark.marginalia-highlight.is-active {
   background-color: var(--marginalia-highlight-active);
 }
 
+mark.marginalia-highlight--red {
+  background-color: rgba(248, 113, 113, 0.35);
+  border-color: #ef4444;
+}
+
+mark.marginalia-highlight--yellow {
+  background-color: rgba(254, 240, 138, 0.6);
+  border-color: #facc15;
+}
+
+mark.marginalia-highlight--green {
+  background-color: rgba(134, 239, 172, 0.4);
+  border-color: #22c55e;
+}
+
+mark.marginalia-highlight--reaction {
+  background: transparent;
+  border-bottom-style: dotted;
+}
+
+.marginalia-reaction {
+  display: inline-block;
+  margin-left: 0.15em;
+  font-size: 0.9em;
+  animation: marginalia-pop 0.3s ease-out;
+}
+
 /* インラインコメントトグルバッジ */
 button.marginalia-badge {
   display: inline-flex;
@@ -164,6 +191,25 @@ button.marginalia-badge:hover {
   background: rgba(0, 0, 0, 0.06);
 }
 
+.marginalia-toolbar .marginalia-color-button {
+  padding-inline: 7px;
+  font-size: 16px;
+}
+
+.marginalia-color-button[data-color="red"] {
+  color: #ef4444;
+}
+.marginalia-color-button[data-color="yellow"] {
+  color: #eab308;
+}
+.marginalia-color-button[data-color="green"] {
+  color: #22c55e;
+}
+
+.marginalia-reaction-button:hover {
+  animation: marginalia-pop 0.25s ease-out;
+}
+
 @media (prefers-color-scheme: dark) {
   .marginalia-toolbar button:hover {
     background: rgba(255, 255, 255, 0.1);
@@ -243,6 +289,31 @@ button.marginalia-badge:hover {
 }
 
 @keyframes marginalia-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes marginalia-pop {
+  0% {
+    transform: scale(0.75);
+  }
+  60% {
+    transform: scale(1.25) rotate(-6deg);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marginalia-reaction,
+  .marginalia-reaction-button:hover {
+    animation: none;
+  }
 }

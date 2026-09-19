@@ -15,18 +15,48 @@ export interface RenderResult {
   card?: HTMLElement;
 }
 
+export function annotationClassName(annotation: W3CAnnotation): string {
+  const color = annotation.body?.find((body) => body.purpose === "highlighting")
+    ?.value;
+  if (color === "red" || color === "yellow" || color === "green") {
+    return `marginalia-highlight--${color}`;
+  }
+  return annotation.body?.some((body) => body.purpose === "tagging")
+    ? "marginalia-highlight--reaction"
+    : "";
+}
+
+export function attachReaction(
+  mark: HTMLElement,
+  id: string,
+  reaction: string,
+): void {
+  const doc = mark.ownerDocument || document;
+  if (doc.querySelector(`.marginalia-reaction[data-annotation-id="${id}"]`)) {
+    return;
+  }
+  const badge = doc.createElement("span");
+  badge.className = "marginalia-reaction";
+  badge.dataset.annotationId = id;
+  badge.textContent = reaction;
+  badge.setAttribute("aria-label", `リアクション ${reaction}`);
+  mark.parentNode?.insertBefore(badge, mark.nextSibling);
+}
+
 /**
  * ハイライト要素の近傍に注釈（マージナリア）カードを配置する
  * XSS対策: コメントや作者名は必ず textContent を通してプレーンテキストとして安全に設定する
  */
 export function attachMarginaliaCard(
   mark: HTMLElement,
-  options: MarginaliaCardOptions
+  options: MarginaliaCardOptions,
 ): HTMLElement {
   const doc = mark.ownerDocument || document;
 
   // 既に同一IDのカードが存在する場合は二重作成しない
-  const existingCard = doc.querySelector(`.marginalia-card[data-annotation-id="${options.id}"]`) as HTMLElement | null;
+  const existingCard = doc.querySelector(
+    `.marginalia-card[data-annotation-id="${options.id}"]`,
+  ) as HTMLElement | null;
   if (existingCard) return existingCard;
 
   // 1. マージナリアカード要素を生成
@@ -93,7 +123,8 @@ export function attachMarginaliaCard(
   });
 
   // 4. カードのDOM挿入（親ブロック要素の直後、または mark の直後）
-  const parentBlock = mark.closest("p, li, blockquote, div, h1, h2, h3, h4, h5, h6") || mark;
+  const parentBlock =
+    mark.closest("p, li, blockquote, div, h1, h2, h3, h4, h5, h6") || mark;
   if (parentBlock.nextSibling) {
     parentBlock.parentNode?.insertBefore(card, parentBlock.nextSibling);
   } else {
@@ -108,25 +139,20 @@ export function attachMarginaliaCard(
  */
 export function renderAnnotation(
   container: HTMLElement,
-  annotation: W3CAnnotation
+  annotation: W3CAnnotation,
 ): RenderResult | null {
   const selector = annotation.target?.selector;
   if (!selector || selector.type !== "TextQuoteSelector") return null;
 
   // 既に同一IDのハイライトが存在する場合は二重描画を防止
   const existingMark = container.querySelector(
-    `mark[data-annotation-id="${annotation.id}"]`
+    `mark[data-annotation-id="${annotation.id}"]`,
   ) as HTMLElement | null;
-  if (existingMark) {
-    const doc = container.ownerDocument || document;
-    const existingCard = doc.querySelector(
-      `.marginalia-card[data-annotation-id="${annotation.id}"]`
-    ) as HTMLElement | null;
-    return { mark: existingMark, card: existingCard || undefined };
-  }
-
-  // 1. テキストをハイライト
-  const mark = highlightSelector(container, selector, { id: annotation.id });
+  const mark = existingMark ||
+    highlightSelector(container, selector, {
+      id: annotation.id,
+      className: annotationClassName(annotation),
+    });
   if (!mark) return null;
 
   // 2. コメント本文があればマージナリアカードをアタッチ
@@ -154,6 +180,10 @@ export function renderAnnotation(
     });
   }
 
+  const reaction = annotation.body?.find((body) => body.purpose === "tagging")
+    ?.value;
+  if (reaction) attachReaction(mark, annotation.id, reaction);
+
   return { mark, card };
 }
 
@@ -171,4 +201,7 @@ export function clearAllMarginalia(container: HTMLElement): void {
   badges.forEach((badge) => {
     badge.parentNode?.removeChild(badge);
   });
+
+  const reactions = container.querySelectorAll(".marginalia-reaction");
+  reactions.forEach((reaction) => reaction.parentNode?.removeChild(reaction));
 }

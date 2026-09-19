@@ -46,6 +46,14 @@ export interface CreateHighlightParams {
     suffix?: string;
   };
   id?: string;
+  color?: HighlightColor;
+}
+
+export type HighlightColor = "red" | "yellow" | "green";
+
+export interface CreateReactionParams
+  extends Omit<CreateHighlightParams, "color"> {
+  reaction: string;
 }
 
 export interface CreateCommentParams extends CreateHighlightParams {
@@ -58,7 +66,9 @@ export interface CreateCommentParams extends CreateHighlightParams {
 /**
  * ハイライト用のアノテーション（JSON-LD）を生成
  */
-export function createHighlightAnnotation(params: CreateHighlightParams): W3CAnnotation {
+export function createHighlightAnnotation(
+  params: CreateHighlightParams,
+): W3CAnnotation {
   const id = params.id || `urn:uuid:${crypto.randomUUID()}`;
   return {
     "@context": "http://www.w3.org/ns/anno.jsonld",
@@ -68,6 +78,7 @@ export function createHighlightAnnotation(params: CreateHighlightParams): W3CAnn
       {
         type: "TextualBody",
         purpose: "highlighting",
+        ...(params.color ? { value: params.color } : {}),
       },
     ],
     target: {
@@ -84,18 +95,50 @@ export function createHighlightAnnotation(params: CreateHighlightParams): W3CAnn
 }
 
 /**
+ * 選択範囲への絵文字リアクションを生成
+ */
+export function createReactionAnnotation(
+  params: CreateReactionParams,
+): W3CAnnotation {
+  const id = params.id || `urn:uuid:${crypto.randomUUID()}`;
+  return {
+    "@context": "http://www.w3.org/ns/anno.jsonld",
+    id,
+    type: "Annotation",
+    body: [{
+      type: "TextualBody",
+      value: params.reaction,
+      purpose: "tagging",
+      format: "text/plain",
+    }],
+    target: {
+      source: params.source,
+      selector: {
+        type: "TextQuoteSelector",
+        exact: params.selector.exact,
+        ...(params.selector.prefix ? { prefix: params.selector.prefix } : {}),
+        ...(params.selector.suffix ? { suffix: params.selector.suffix } : {}),
+      },
+    },
+    created: new Date().toISOString(),
+  };
+}
+
+/**
  * コメント（Marginalia）付きアノテーション（JSON-LD）を生成
  */
-export function createCommentAnnotation(params: CreateCommentParams): W3CAnnotation {
+export function createCommentAnnotation(
+  params: CreateCommentParams,
+): W3CAnnotation {
   const id = params.id || `urn:uuid:${crypto.randomUUID()}`;
   const creator: AnnotationCreator | undefined = params.creator
     ? params.creator
     : params.author
     ? {
-        type: "Person",
-        name: params.author,
-        ...(params.url ? { url: params.url } : {}),
-      }
+      type: "Person",
+      name: params.author,
+      ...(params.url ? { url: params.url } : {}),
+    }
     : undefined;
 
   return {
@@ -128,7 +171,12 @@ export interface ValidateAnnotationOptions {
   maxCommentLength?: number;
 }
 
-const VALID_PURPOSES = new Set(["commenting", "highlighting", "tagging", "describing"]);
+const VALID_PURPOSES = new Set([
+  "commenting",
+  "highlighting",
+  "tagging",
+  "describing",
+]);
 const W3C_ANNO_CONTEXT = "http://www.w3.org/ns/anno.jsonld";
 
 /**
@@ -136,11 +184,14 @@ const W3C_ANNO_CONTEXT = "http://www.w3.org/ns/anno.jsonld";
  */
 export function validateAnnotation(
   data: unknown,
-  options?: ValidateAnnotationOptions
+  options?: ValidateAnnotationOptions,
 ): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
   if (!data || typeof data !== "object" || Array.isArray(data)) {
-    return { valid: false, errors: ["Invalid annotation object (must be a non-null object)"] };
+    return {
+      valid: false,
+      errors: ["Invalid annotation object (must be a non-null object)"],
+    };
   }
 
   const anno = data as Record<string, unknown>;
@@ -149,7 +200,9 @@ export function validateAnnotation(
   const context = anno["@context"];
   if (context !== W3C_ANNO_CONTEXT) {
     if (!Array.isArray(context) || !context.includes(W3C_ANNO_CONTEXT)) {
-      errors.push(`Invalid or missing '@context' (must include '${W3C_ANNO_CONTEXT}')`);
+      errors.push(
+        `Invalid or missing '@context' (must include '${W3C_ANNO_CONTEXT}')`,
+      );
     }
   }
 
@@ -160,12 +213,19 @@ export function validateAnnotation(
 
   // 3. id
   if (typeof anno.id !== "string" || !anno.id.trim()) {
-    errors.push("Missing or invalid 'id' property (must be a non-empty string)");
+    errors.push(
+      "Missing or invalid 'id' property (must be a non-empty string)",
+    );
   }
 
   // 4. created
-  if (typeof anno.created !== "string" || !anno.created.trim() || isNaN(Date.parse(anno.created))) {
-    errors.push("Missing or invalid 'created' property (must be a valid ISO 8601 date string)");
+  if (
+    typeof anno.created !== "string" || !anno.created.trim() ||
+    isNaN(Date.parse(anno.created))
+  ) {
+    errors.push(
+      "Missing or invalid 'created' property (must be a valid ISO 8601 date string)",
+    );
   }
 
   // 5. target & target.source
@@ -174,7 +234,9 @@ export function validateAnnotation(
     errors.push("Missing 'target' property");
   } else {
     if (typeof target.source !== "string" || !target.source.trim()) {
-      errors.push("Missing or invalid 'target.source' property (must be a non-empty string)");
+      errors.push(
+        "Missing or invalid 'target.source' property (must be a non-empty string)",
+      );
     }
 
     const selector = target.selector as Record<string, unknown> | undefined;
@@ -182,16 +244,26 @@ export function validateAnnotation(
       errors.push("Missing 'target.selector' property");
     } else {
       if (selector.type !== "TextQuoteSelector") {
-        errors.push("Invalid 'target.selector.type' (must be 'TextQuoteSelector')");
+        errors.push(
+          "Invalid 'target.selector.type' (must be 'TextQuoteSelector')",
+        );
       }
       if (typeof selector.exact !== "string" || !selector.exact.trim()) {
         errors.push("Invalid or empty 'target.selector.exact'");
       }
-      if (selector.prefix !== undefined && typeof selector.prefix !== "string") {
-        errors.push("Invalid 'target.selector.prefix' (must be a string if specified)");
+      if (
+        selector.prefix !== undefined && typeof selector.prefix !== "string"
+      ) {
+        errors.push(
+          "Invalid 'target.selector.prefix' (must be a string if specified)",
+        );
       }
-      if (selector.suffix !== undefined && typeof selector.suffix !== "string") {
-        errors.push("Invalid 'target.selector.suffix' (must be a string if specified)");
+      if (
+        selector.suffix !== undefined && typeof selector.suffix !== "string"
+      ) {
+        errors.push(
+          "Invalid 'target.selector.suffix' (must be a string if specified)",
+        );
       }
     }
   }
@@ -211,14 +283,23 @@ export function validateAnnotation(
       if (bodyObj.type !== "TextualBody") {
         errors.push("Invalid body type (must be 'TextualBody')");
       }
-      if (typeof bodyObj.purpose !== "string" || !VALID_PURPOSES.has(bodyObj.purpose)) {
-        errors.push(`Invalid body purpose (must be one of: ${Array.from(VALID_PURPOSES).join(", ")})`);
+      if (
+        typeof bodyObj.purpose !== "string" ||
+        !VALID_PURPOSES.has(bodyObj.purpose)
+      ) {
+        errors.push(
+          `Invalid body purpose (must be one of: ${
+            Array.from(VALID_PURPOSES).join(", ")
+          })`,
+        );
       }
       if (bodyObj.purpose === "commenting") {
         if (typeof bodyObj.value !== "string" || !bodyObj.value.trim()) {
           errors.push("Comment body value cannot be empty or whitespace only");
         } else if (bodyObj.value.length > maxCommentLength) {
-          errors.push(`Comment body value exceeds maximum length of ${maxCommentLength} characters`);
+          errors.push(
+            `Comment body value exceeds maximum length of ${maxCommentLength} characters`,
+          );
         }
       }
     }
@@ -231,13 +312,19 @@ export function validateAnnotation(
       if (!creator.trim()) {
         errors.push("Invalid 'creator' property (must be a non-empty string)");
       }
-    } else if (typeof creator === "object" && creator !== null && !Array.isArray(creator)) {
+    } else if (
+      typeof creator === "object" && creator !== null && !Array.isArray(creator)
+    ) {
       const creatorObj = creator as Record<string, unknown>;
       if (typeof creatorObj.name !== "string" || !creatorObj.name.trim()) {
-        errors.push("Invalid or missing 'creator.name' property (must be a non-empty string)");
+        errors.push(
+          "Invalid or missing 'creator.name' property (must be a non-empty string)",
+        );
       }
       if (creatorObj.url !== undefined && typeof creatorObj.url !== "string") {
-        errors.push("Invalid 'creator.url' property (must be a string if specified)");
+        errors.push(
+          "Invalid 'creator.url' property (must be a string if specified)",
+        );
       }
     } else {
       errors.push("Invalid 'creator' property (must be a string or object)");

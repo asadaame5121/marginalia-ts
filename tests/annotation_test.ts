@@ -1,7 +1,8 @@
 import { assertEquals } from "@std/assert";
 import {
-  createHighlightAnnotation,
   createCommentAnnotation,
+  createHighlightAnnotation,
+  createReactionAnnotation,
   validateAnnotation,
 } from "../src/core/annotation.ts";
 
@@ -25,6 +26,25 @@ Deno.test("Annotation - createHighlightAnnotation", () => {
   assertEquals(anno.target.selector.prefix, "前のテキスト、");
   assertEquals(anno.target.selector.suffix, "、後のテキスト");
   assertEquals(anno.body[0].purpose, "highlighting");
+});
+
+Deno.test("Annotation - colored highlight and reaction", () => {
+  const highlight = createHighlightAnnotation({
+    source: "https://example.com",
+    selector: { exact: "色付き" },
+    color: "green",
+  });
+  const reaction = createReactionAnnotation({
+    source: "https://example.com",
+    selector: { exact: "リアクション" },
+    reaction: "🎉",
+  });
+
+  assertEquals(highlight.body[0].value, "green");
+  assertEquals(reaction.body[0].purpose, "tagging");
+  assertEquals(reaction.body[0].value, "🎉");
+  assertEquals(validateAnnotation(highlight).valid, true);
+  assertEquals(validateAnnotation(reaction).valid, true);
 });
 
 Deno.test("Annotation - createCommentAnnotation", () => {
@@ -84,7 +104,10 @@ Deno.test("Annotation - validateAnnotation 厳密化チェック", () => {
   // 配列での @context は許容
   const arrayContext = {
     ...baseValid,
-    "@context": ["http://www.w3.org/ns/anno.jsonld", "http://example.org/custom.jsonld"],
+    "@context": [
+      "http://www.w3.org/ns/anno.jsonld",
+      "http://example.org/custom.jsonld",
+    ],
   };
   assertEquals(validateAnnotation(arrayContext).valid, true);
 
@@ -163,8 +186,14 @@ Deno.test("Annotation - validateAnnotation 厳密化チェック", () => {
     selector: { exact: "a" },
     comment: "123456",
   });
-  assertEquals(validateAnnotation(customLimitAnno, { maxCommentLength: 5 }).valid, false);
-  assertEquals(validateAnnotation(customLimitAnno, { maxCommentLength: 10 }).valid, true);
+  assertEquals(
+    validateAnnotation(customLimitAnno, { maxCommentLength: 5 }).valid,
+    false,
+  );
+  assertEquals(
+    validateAnnotation(customLimitAnno, { maxCommentLength: 10 }).valid,
+    true,
+  );
 });
 
 Deno.test("Annotation - createCommentAnnotation with creator & validateAnnotation", () => {
@@ -205,4 +234,3 @@ Deno.test("Annotation - createCommentAnnotation with creator & validateAnnotatio
   };
   assertEquals(validateAnnotation(badCreatorUrl).valid, false);
 });
-

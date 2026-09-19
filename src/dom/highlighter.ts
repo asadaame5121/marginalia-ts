@@ -13,13 +13,13 @@ export interface HighlightOptions {
  * Range と交差するすべてのテキストノードとそのオフセット区間を収集する
  */
 function getTextNodesInRange(
-  range: Range
+  range: Range,
 ): { node: Text; startOffset: number; endOffset: number }[] {
   const root = range.commonAncestorContainer.nodeType === 3
     ? range.commonAncestorContainer.parentNode || range.commonAncestorContainer
     : range.commonAncestorContainer;
   const doc = root.ownerDocument || document;
-  const walker = doc.createTreeWalker(root, 4 /* SHOW_TEXT */, null);
+  const walker = doc.createTreeWalker(root, 4, /* SHOW_TEXT */ null);
   const result: { node: Text; startOffset: number; endOffset: number }[] = [];
 
   let curr = walker.nextNode();
@@ -57,7 +57,10 @@ function getTextNodesInRange(
  * Range を <mark> 要素で安全にラップしてハイライトを適用する
  * 複数テキストノードやブロック要素をまたぐ場合でもDOM構造を破壊しない
  */
-export function highlightRange(range: Range, options?: HighlightOptions): HTMLElement {
+export function highlightRange(
+  range: Range,
+  options?: HighlightOptions,
+): HTMLElement {
   const doc = range.startContainer.ownerDocument || document;
   const textNodes = getTextNodesInRange(range);
 
@@ -104,7 +107,7 @@ export function highlightRange(range: Range, options?: HighlightOptions): HTMLEl
 export function highlightSelector(
   container: HTMLElement,
   selector: TextQuoteSelector,
-  options?: HighlightOptions
+  options?: HighlightOptions,
 ): HTMLElement | null {
   const range = findRangeBySelector(container, selector);
   if (!range) return null;
@@ -116,6 +119,10 @@ export function highlightSelector(
  * 特定のアノテーションIDを持つハイライトを解除し、元のDOM構造に戻す
  */
 export function removeHighlight(container: HTMLElement, id: string): void {
+  const reactions = container.querySelectorAll(
+    `.marginalia-reaction[data-annotation-id="${id}"]`,
+  );
+  reactions.forEach((reaction) => reaction.parentNode?.removeChild(reaction));
   const marks = container.querySelectorAll(`mark[data-annotation-id="${id}"]`);
   marks.forEach((mark) => {
     const parent = mark.parentNode;

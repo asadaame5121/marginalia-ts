@@ -1,12 +1,14 @@
 import { extractSelectorFromRange } from "../dom/matcher.ts";
-import { toTextFragmentUrl, isValidHttpUrl } from "../core/url.ts";
+import { isValidHttpUrl, toTextFragmentUrl } from "../core/url.ts";
 import { removeHighlight } from "../dom/highlighter.ts";
 import {
-  createHighlightAnnotation,
   createCommentAnnotation,
+  createHighlightAnnotation,
+  createReactionAnnotation,
+  type HighlightColor,
   type W3CAnnotation,
 } from "../core/annotation.ts";
-import { resolveConfig, type MarginaliaConfig } from "../core/config.ts";
+import { type MarginaliaConfig, resolveConfig } from "../core/config.ts";
 
 export interface ToolbarHandlers {
   onAnnotate: (annotation: W3CAnnotation) => void | Promise<void>;
@@ -38,36 +40,78 @@ interface CreateToolbarOptions {
 }
 
 function createToolbarElement(options: CreateToolbarOptions): HTMLElement {
-  const { doc, win, container, handlers, getActiveRange, onClose, onOpenComment } = options;
+  const {
+    doc,
+    win,
+    container,
+    handlers,
+    getActiveRange,
+    onClose,
+    onOpenComment,
+  } = options;
   const toolbar = doc.createElement("div");
   toolbar.className = "marginalia-toolbar";
   toolbar.setAttribute("role", "toolbar");
   toolbar.setAttribute("aria-label", "テキスト注釈ツールバー");
 
-  // 1. ハイライトボタン
-  const btnHighlight = doc.createElement("button");
-  btnHighlight.setAttribute("type", "button");
-  btnHighlight.setAttribute("aria-label", "テキストをハイライト");
-  btnHighlight.setAttribute("data-action", "highlight");
-  btnHighlight.innerHTML = "<span>🖍️</span> ハイライト";
-  btnHighlight.addEventListener("click", async () => {
+  const submitSelection = async (
+    create: (
+      source: string,
+      selector: ReturnType<typeof extractSelectorFromRange>,
+    ) => W3CAnnotation,
+  ) => {
     const range = getActiveRange();
     if (!range) return;
-    const selector = extractSelectorFromRange(range, container);
-    const anno = createHighlightAnnotation({
-      source: win.location.href,
-      selector,
-    });
+    const anno = create(
+      win.location.href,
+      extractSelectorFromRange(range, container),
+    );
     handlers.onHighlightCreated?.(range, anno);
     onClose();
     win.getSelection()?.removeAllRanges();
-
     try {
       await handlers.onAnnotate(anno);
     } catch (err) {
       removeHighlight(container, anno.id);
       handlers.onError?.(err);
     }
+  };
+
+  const highlightButtons = (["red", "yellow", "green"] as HighlightColor[]).map(
+    (color) => {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.className = "marginalia-color-button";
+      button.dataset.action = "highlight";
+      button.dataset.color = color;
+      button.setAttribute("aria-label", `${color}でハイライト`);
+      button.textContent = "●";
+      button.addEventListener(
+        "click",
+        () =>
+          submitSelection((source, selector) =>
+            createHighlightAnnotation({ source, selector, color })
+          ),
+      );
+      return button;
+    },
+  );
+
+  const reactionButtons = ["👍", "❤️", "😂", "🎉"].map((reaction) => {
+    const button = doc.createElement("button");
+    button.type = "button";
+    button.className = "marginalia-reaction-button";
+    button.dataset.action = "reaction";
+    button.setAttribute("aria-label", `${reaction}でリアクション`);
+    button.textContent = reaction;
+    button.addEventListener(
+      "click",
+      () =>
+        submitSelection((source, selector) =>
+          createReactionAnnotation({ source, selector, reaction })
+        ),
+    );
+    return button;
   });
 
   // 2. コメントボタン（configで有効な場合のみ）
@@ -104,11 +148,9 @@ function createToolbarElement(options: CreateToolbarOptions): HTMLElement {
     setTimeout(onClose, 1000);
   });
 
-  if (btnComment) {
-    toolbar.append(btnHighlight, btnComment, btnCopyLink);
-  } else {
-    toolbar.append(btnHighlight, btnCopyLink);
-  }
+  toolbar.append(...highlightButtons);
+  if (btnComment) toolbar.append(btnComment);
+  toolbar.append(...reactionButtons, btnCopyLink);
   return toolbar;
 }
 
@@ -122,8 +164,11 @@ interface CreatePopoverOptions {
   onClose: () => void;
 }
 
-function createCommentPopoverElement(options: CreatePopoverOptions): HTMLElement {
-  const { doc, win, container, handlers, config, getActiveRange, onClose } = options;
+function createCommentPopoverElement(
+  options: CreatePopoverOptions,
+): HTMLElement {
+  const { doc, win, container, handlers, config, getActiveRange, onClose } =
+    options;
   const popover = doc.createElement("div");
   popover.className = "marginalia-popover";
   popover.setAttribute("role", "dialog");
@@ -134,7 +179,8 @@ function createCommentPopoverElement(options: CreatePopoverOptions): HTMLElement
   const nameInput = doc.createElement("input");
   nameInput.type = "text";
   nameInput.className = "marginalia-input-name";
-  nameInput.placeholder = config.form?.name?.placeholder || "名前を入力（必須）";
+  nameInput.placeholder = config.form?.name?.placeholder ||
+    "名前を入力（必須）";
   nameInput.setAttribute("aria-label", "お名前");
 
   // URL入力欄（任意）
@@ -147,7 +193,8 @@ function createCommentPopoverElement(options: CreatePopoverOptions): HTMLElement
   // コメント本文入力欄（必須）
   const textarea = doc.createElement("textarea");
   textarea.className = "marginalia-textarea-comment";
-  textarea.placeholder = config.form?.comment?.placeholder || "コメントを入力...";
+  textarea.placeholder = config.form?.comment?.placeholder ||
+    "コメントを入力...";
   textarea.setAttribute("rows", "3");
   textarea.setAttribute("aria-label", "コメント本文");
 
@@ -177,7 +224,8 @@ function createCommentPopoverElement(options: CreatePopoverOptions): HTMLElement
 
     const name = nameInput.value.trim();
     if (!name) {
-      errorDiv.textContent = config.messages?.nameRequired || "名前を入力してください。";
+      errorDiv.textContent = config.messages?.nameRequired ||
+        "名前を入力してください。";
       errorDiv.style.display = "block";
       nameInput.focus();
       return;
@@ -185,7 +233,8 @@ function createCommentPopoverElement(options: CreatePopoverOptions): HTMLElement
 
     const urlVal = urlInput.value.trim();
     if (urlVal && !isValidHttpUrl(urlVal)) {
-      errorDiv.textContent = config.messages?.invalidUrl || "有効なURLを入力してください。";
+      errorDiv.textContent = config.messages?.invalidUrl ||
+        "有効なURLを入力してください。";
       errorDiv.style.display = "block";
       urlInput.focus();
       return;
@@ -194,7 +243,8 @@ function createCommentPopoverElement(options: CreatePopoverOptions): HTMLElement
     const commentText = textarea.value.trim();
     const range = getActiveRange();
     if (!commentText) {
-      errorDiv.textContent = config.messages?.commentRequired || "コメントを入力してください。";
+      errorDiv.textContent = config.messages?.commentRequired ||
+        "コメントを入力してください。";
       errorDiv.style.display = "block";
       textarea.focus();
       return;
@@ -225,7 +275,8 @@ function createCommentPopoverElement(options: CreatePopoverOptions): HTMLElement
       btnSubmit.disabled = false;
       btnCancel.disabled = false;
       btnSubmit.textContent = "保存";
-      errorDiv.textContent = config.messages?.saveFailed || "保存に失敗しました。再試行してください。";
+      errorDiv.textContent = config.messages?.saveFailed ||
+        "保存に失敗しました。再試行してください。";
       errorDiv.style.display = "block";
       handlers.onError?.(err);
     }
@@ -241,7 +292,7 @@ function createCommentPopoverElement(options: CreatePopoverOptions): HTMLElement
  */
 export function setupSelectionToolbar(
   container: HTMLElement,
-  handlers: ToolbarHandlers
+  handlers: ToolbarHandlers,
 ): SelectionToolbar {
   const doc = container.ownerDocument || document;
   const win = doc.defaultView || window;
@@ -304,7 +355,9 @@ export function setupSelectionToolbar(
 
     doc.body.appendChild(toolbarEl);
     const tbWidth = toolbarEl.offsetWidth || 240;
-    toolbarEl.style.left = `${scrollX + rect.left + rect.width / 2 - tbWidth / 2}px`;
+    toolbarEl.style.left = `${
+      scrollX + rect.left + rect.width / 2 - tbWidth / 2
+    }px`;
     toolbarEl.style.top = `${scrollY + rect.top - 44}px`;
   }
 
@@ -328,7 +381,9 @@ export function setupSelectionToolbar(
     popoverEl.style.left = `${scrollX + rect.left}px`;
     popoverEl.style.top = `${scrollY + rect.bottom + 8}px`;
 
-    const nameInput = popoverEl.querySelector(".marginalia-input-name") as HTMLElement | null;
+    const nameInput = popoverEl.querySelector(".marginalia-input-name") as
+      | HTMLElement
+      | null;
     (nameInput || popoverEl.querySelector("textarea"))?.focus();
   }
 
