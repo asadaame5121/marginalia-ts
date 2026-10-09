@@ -5,6 +5,7 @@
   "tasks": {
     "test": "deno test -A --watch tests/",
     "test:run": "deno test -A tests/",
+    "test:auth:http": "deno test -A tests/indieauth_http_test.ts",
     "build": "deno run -A build.ts"
   },
   "compilerOptions": {
