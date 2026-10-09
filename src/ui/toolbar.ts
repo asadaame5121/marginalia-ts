@@ -9,6 +9,7 @@ import {
   type W3CAnnotation,
 } from "../core/annotation.ts";
 import { type MarginaliaConfig, resolveConfig } from "../core/config.ts";
+import { IndieAuthClient, type IndieAuthUser } from "../core/indieauth.ts";
 
 export interface ToolbarHandlers {
   onAnnotate: (annotation: W3CAnnotation) => void | Promise<void>;
@@ -164,6 +165,119 @@ interface CreatePopoverOptions {
   onClose: () => void;
 }
 
+interface IndieAuthSectionOptions {
+  doc: Document;
+  win: Window;
+  config: MarginaliaConfig;
+  nameInput: HTMLInputElement;
+  urlInput: HTMLInputElement;
+  errorDiv: HTMLElement;
+}
+
+interface IndieAuthSectionResult {
+  section: HTMLElement;
+  getAuthenticatedUser: () => IndieAuthUser | null;
+}
+
+function createIndieAuthSection(
+  options: IndieAuthSectionOptions,
+): IndieAuthSectionResult {
+  const { doc, win, config, nameInput, urlInput, errorDiv } = options;
+  const section = doc.createElement("div");
+  section.className = "marginalia-indieauth-section";
+
+  const authConfig = config.auth;
+  const client: IndieAuthClient = authConfig?.client ||
+    new IndieAuthClient({
+      clientId: authConfig?.clientId || win.location.origin,
+      redirectUri: authConfig?.redirectUri || win.location.href,
+      defaultAuthEndpoint: authConfig?.defaultAuthEndpoint,
+      defaultTokenEndpoint: authConfig?.defaultTokenEndpoint,
+      scope: authConfig?.scope,
+    });
+
+  function render() {
+    section.innerHTML = "";
+    const user = client.getUser();
+
+    if (user) {
+      const badge = doc.createElement("div");
+      badge.className = "marginalia-indieauth-user-badge";
+      const userText = doc.createElement("span");
+      userText.textContent = `👤 ${user.name || user.me}`;
+      badge.appendChild(userText);
+
+      const btnSignOut = doc.createElement("button");
+      btnSignOut.type = "button";
+      btnSignOut.className = "marginalia-indieauth-btn-signout";
+      btnSignOut.textContent = config.messages?.indieAuthSignOutButton || "サインアウト";
+      btnSignOut.addEventListener("click", () => {
+        client.signOut();
+        nameInput.value = "";
+        urlInput.value = "";
+        render();
+      });
+      badge.appendChild(btnSignOut);
+      section.appendChild(badge);
+
+      if (user.name) nameInput.value = user.name;
+      if (user.me) urlInput.value = user.me;
+    } else {
+      const loginBox = doc.createElement("div");
+      loginBox.className = "marginalia-indieauth-login-box";
+
+      const authInput = doc.createElement("input");
+      authInput.type = "url";
+      authInput.className = "marginalia-indieauth-input";
+      authInput.placeholder = config.messages?.indieAuthProfilePlaceholder ||
+        "https://yourdomain.com";
+      authInput.setAttribute("aria-label", "IndieAuth プロファイルURL");
+
+      const btnSignIn = doc.createElement("button");
+      btnSignIn.type = "button";
+      btnSignIn.className = "marginalia-indieauth-btn-signin";
+      btnSignIn.textContent = config.messages?.indieAuthSignInButton || "サインイン";
+      btnSignIn.addEventListener("click", async () => {
+        errorDiv.style.display = "none";
+        const val = authInput.value.trim();
+        if (!val) {
+          errorDiv.textContent = config.messages?.indieAuthInvalidUrl ||
+            "有効なIndieAuth URLを入力してください。";
+          errorDiv.style.display = "block";
+          authInput.focus();
+          return;
+        }
+
+        btnSignIn.disabled = true;
+        btnSignIn.textContent = "...";
+        try {
+          const authUrl = await client.startAuth(val);
+          try {
+            win.location.href = authUrl;
+          } catch {
+            // JSDOM等の環境でnavigation未実装エラーを安全に吸収
+          }
+        } catch (err) {
+          btnSignIn.disabled = false;
+          btnSignIn.textContent = config.messages?.indieAuthSignInButton || "サインイン";
+          errorDiv.textContent = err instanceof Error ? err.message : String(err);
+          errorDiv.style.display = "block";
+        }
+      });
+
+      loginBox.append(authInput, btnSignIn);
+      section.appendChild(loginBox);
+    }
+  }
+
+  render();
+
+  return {
+    section,
+    getAuthenticatedUser: () => client.getUser(),
+  };
+}
+
 function createCommentPopoverElement(
   options: CreatePopoverOptions,
 ): HTMLElement {
@@ -204,6 +318,19 @@ function createCommentPopoverElement(
   errorDiv.style.color = "#dc2626";
   errorDiv.style.fontSize = "12px";
 
+  // IndieAuth セクション（config.auth?.enabled が true の場合のみオプショナルで表示）
+  let authHelper: IndieAuthSectionResult | null = null;
+  if (config.auth?.enabled) {
+    authHelper = createIndieAuthSection({
+      doc,
+      win,
+      config,
+      nameInput,
+      urlInput,
+      errorDiv,
+    });
+  }
+
   const actions = doc.createElement("div");
   actions.className = "marginalia-popover-actions";
 
@@ -222,7 +349,11 @@ function createCommentPopoverElement(
   btnSubmit.addEventListener("click", async () => {
     errorDiv.style.display = "none";
 
-    const name = nameInput.value.trim();
+    const authUser = authHelper?.getAuthenticatedUser();
+    const name = authUser
+      ? (nameInput.value.trim() || authUser.name || authUser.me)
+      : nameInput.value.trim();
+
     if (!name) {
       errorDiv.textContent = config.messages?.nameRequired ||
         "名前を入力してください。";
@@ -231,7 +362,8 @@ function createCommentPopoverElement(
       return;
     }
 
-    const urlVal = urlInput.value.trim();
+    const rawUrl = urlInput.value.trim();
+    const urlVal = authUser ? (rawUrl || authUser.me) : rawUrl;
     if (urlVal && !isValidHttpUrl(urlVal)) {
       errorDiv.textContent = config.messages?.invalidUrl ||
         "有効なURLを入力してください。";
@@ -283,6 +415,9 @@ function createCommentPopoverElement(
   });
 
   actions.append(btnCancel, btnSubmit);
+  if (authHelper) {
+    popover.append(authHelper.section);
+  }
   popover.append(nameInput, urlInput, textarea, errorDiv, actions);
   return popover;
 }

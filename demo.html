@@ -68,10 +68,14 @@
     </article>
   </main>
 
-  <div class="controls">
+  <div class="controls" style="flex-wrap: wrap;">
     <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
       <input type="checkbox" id="toggle-comment-feature" checked>
-      コメント機能の解放（チェックを外すと閉鎖）
+      コメント機能の解放
+    </label>
+    <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
+      <input type="checkbox" id="toggle-indieauth-feature">
+      IndieAuth認証オプション（任意）の表示
     </label>
     <button class="btn-reset" id="btn-clear-storage">保存データをクリア</button>
   </div>
@@ -82,6 +86,7 @@
     const STORAGE_KEY = "demo_annotations";
     const postContent = document.getElementById("post-content");
     const toggleComment = document.getElementById("toggle-comment-feature");
+    const toggleIndieAuth = document.getElementById("toggle-indieauth-feature");
 
     // 疑似 Deno KV (localStorage)
     function loadSavedAnnotations() {
@@ -102,7 +107,7 @@
 
     let marginalia = null;
 
-    function initMarginalia(commentsEnabled = true) {
+    function initMarginalia() {
       marginalia?.destroy();
 
       marginalia = createMarginalia({
@@ -110,13 +115,16 @@
         config: {
           features: {
             comments: {
-              enabled: commentsEnabled
-            }
-          }
+              enabled: toggleComment.checked,
+            },
+          },
+          auth: {
+            enabled: toggleIndieAuth.checked,
+          },
         },
         onAnnotate: async (annotation) => {
           saveAnnotationToStorage(annotation);
-        }
+        },
       });
 
       // 保存済みのアノテーションを復元・レンダリング
@@ -124,11 +132,10 @@
       marginalia.render(savedList);
     }
 
-    initMarginalia(true);
+    initMarginalia();
 
-    toggleComment.addEventListener("change", (e) => {
-      initMarginalia(e.target.checked);
-    });
+    toggleComment.addEventListener("change", initMarginalia);
+    toggleIndieAuth.addEventListener("change", initMarginalia);
 
     // クリアボタン
     document.getElementById("btn-clear-storage").addEventListener("click", () => {

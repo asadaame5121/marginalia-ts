@@ -82,13 +82,45 @@ marginalia.render(savedAnnotations);
   - `render(annotations: W3CAnnotation[])`: アノテーション配列を一括描画。
   - `destroy()`: イベントリスナーとツールバーを破棄。
 
-### ユーティリティ関数
+### ユーティリティ関数 & IndieAuth API
 - `toTextFragmentUrl(baseUrl, selector)`: Text Fragment URL（`#:~:text=`）を生成。
 - `toFragmentionUrl(baseUrl, exact, index)`: Fragmention URL（`##`）を生成。
 - `parseFragment(urlOrHash)`: ハッシュをパースして `exact`, `prefix`, `suffix` 等を抽出。
 - `createHighlightAnnotation({ source, selector })`: W3Cハイライトアノテーションオブジェクトを作成。
 - `createCommentAnnotation({ source, selector, comment })`: W3Cコメントアノテーションオブジェクトを作成。
 - `validateAnnotation(data)`: アノテーション構造のバリデーション。
+- `IndieAuthClient`: IndieAuth 認証クライアント（ディスカバリー、認可フロー、コールバック処理、PKCE対応）。
+- `normalizeProfileUrl(url)`: IndieAuth プロファイルURLの正規化。
+
+---
+
+## IndieAuth 認証（オプショナル）
+
+IndieWeb の分散認証規格である [IndieAuth](https://indieauth.spec.indieweb.org/) に対応しています。
+**認証は完全にオプショナル（任意）**であり、認証を必須とせずに未認証ユーザーも通常通り名前とコメントを入力して投稿できます。
+
+```javascript
+import { createMarginalia } from "./dist/marginalia.esm.js";
+
+const marginalia = createMarginalia({
+  container: document.getElementById("post-content"),
+  config: {
+    auth: {
+      enabled: true, // IndieAuth オプションを有効化（デフォルトは false）
+      clientId: window.location.origin,
+      redirectUri: window.location.href,
+    },
+  },
+  onAnnotate: async (annotation) => {
+    // 認証済みの場合、annotation.creator に認証されたドメイン情報・名前が自動付与されます
+    await fetch("/api/annotations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(annotation),
+    });
+  },
+});
+```
 
 ---
 
