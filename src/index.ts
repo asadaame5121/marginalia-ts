@@ -11,6 +11,7 @@ import { clearAllHighlights, highlightRange } from "./dom/highlighter.ts";
 import type { MarginaliaConfig } from "./core/config.ts";
 
 export * from "./core/config.ts";
+export * from "./core/indieauth.ts";
 export * from "./core/url.ts";
 export * from "./core/annotation.ts";
 export * from "./dom/matcher.ts";
