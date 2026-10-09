@@ -9,7 +9,7 @@ import {
   type W3CAnnotation,
 } from "../core/annotation.ts";
 import { type MarginaliaConfig, resolveConfig } from "../core/config.ts";
-import { IndieAuthClient, type IndieAuthUser } from "../core/indieauth.ts";
+import { IndieAuthBrowserStorage, IndieAuthClient, type IndieAuthUser, validateEndpointUrl } from "../core/indieauth.ts";
 
 export interface ToolbarHandlers {
   onAnnotate: (annotation: W3CAnnotation) => void | Promise<void>;
@@ -156,6 +156,7 @@ function createToolbarElement(options: CreateToolbarOptions): HTMLElement {
 }
 
 interface CreatePopoverOptions {
+  authReady: Promise<unknown>;
   doc: Document;
   win: Window;
   container: HTMLElement;
@@ -166,6 +167,7 @@ interface CreatePopoverOptions {
 }
 
 interface IndieAuthSectionOptions {
+  authReady: Promise<unknown>;
   doc: Document;
   win: Window;
   config: MarginaliaConfig;
@@ -186,15 +188,7 @@ function createIndieAuthSection(
   const section = doc.createElement("div");
   section.className = "marginalia-indieauth-section";
 
-  const authConfig = config.auth;
-  const client: IndieAuthClient = authConfig?.client ||
-    new IndieAuthClient({
-      clientId: authConfig?.clientId || win.location.origin,
-      redirectUri: authConfig?.redirectUri || win.location.href,
-      defaultAuthEndpoint: authConfig?.defaultAuthEndpoint,
-      defaultTokenEndpoint: authConfig?.defaultTokenEndpoint,
-      scope: authConfig?.scope,
-    });
+  const client = config.auth!.client!;
 
   function render() {
     section.innerHTML = "";
@@ -251,7 +245,7 @@ function createIndieAuthSection(
         btnSignIn.disabled = true;
         btnSignIn.textContent = "...";
         try {
-          const authUrl = await client.startAuth(val);
+          const authUrl = validateEndpointUrl(await client.startAuth(val));
           try {
             win.location.href = authUrl;
           } catch {
@@ -271,6 +265,14 @@ function createIndieAuthSection(
   }
 
   render();
+  void options.authReady.then((error) => {
+    if (error) {
+      errorDiv.textContent = error instanceof Error ? error.message : String(error);
+      errorDiv.style.display = "block";
+    } else {
+      render();
+    }
+  });
 
   return {
     section,
@@ -328,6 +330,7 @@ function createCommentPopoverElement(
       nameInput,
       urlInput,
       errorDiv,
+      authReady: options.authReady,
     });
   }
 
@@ -470,6 +473,31 @@ export function setupSelectionToolbar(
   }
 
   const config = resolveConfig(handlers.config);
+  let authReady: Promise<unknown> = Promise.resolve(null);
+  if (config.auth?.enabled) {
+    const authConfig = config.auth;
+    const callbackUrl = new URL(win.location.href);
+    const cleanUrl = new URL(callbackUrl);
+    for (const key of ["code", "state", "error", "error_description"]) cleanUrl.searchParams.delete(key);
+    const client = authConfig.client || new IndieAuthClient({
+      clientId: authConfig.clientId || win.location.origin,
+      redirectUri: authConfig.redirectUri || cleanUrl.href,
+      defaultAuthEndpoint: authConfig.defaultAuthEndpoint,
+      defaultTokenEndpoint: authConfig.defaultTokenEndpoint,
+      scope: authConfig.scope,
+      discoverEndpoints: authConfig.discoverEndpoints,
+      discoveryOrigin: win.location.origin,
+      storage: new IndieAuthBrowserStorage(win),
+    });
+    config.auth = { ...authConfig, client };
+    authReady = client.handleRedirect(callbackUrl.href).then((handled) => {
+      if (handled) win.history.replaceState(win.history.state, "", cleanUrl.href);
+      return null;
+    }).catch((error: unknown) => {
+      handlers.onError?.(error);
+      return error;
+    });
+  }
 
   function showToolbar(range: Range) {
     removeElements();
@@ -503,6 +531,7 @@ export function setupSelectionToolbar(
     const scrollY = win.pageYOffset || doc.documentElement.scrollTop || 0;
 
     popoverEl = createCommentPopoverElement({
+      authReady,
       doc,
       win,
       container,

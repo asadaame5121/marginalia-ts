@@ -1,5 +1,5 @@
 import rawConfig from "../../config.json" with { type: "json" };
-import type { IndieAuthClient } from "./indieauth.ts";
+import type { IndieAuthClient, IndieAuthDiscovery } from "./indieauth.ts";
 
 export interface FormFieldConfig {
   placeholder: string;
@@ -14,6 +14,7 @@ export interface IndieAuthConfig {
   defaultTokenEndpoint?: string;
   scope?: string;
   client?: IndieAuthClient;
+  discoverEndpoints?: IndieAuthDiscovery;
 }
 
 export interface MarginaliaConfig {
@@ -63,6 +64,7 @@ export function resolveConfig(custom?: MarginaliaConfig): MarginaliaConfig {
       defaultTokenEndpoint: custom.auth?.defaultTokenEndpoint ?? defaultConfig.auth?.defaultTokenEndpoint,
       scope: custom.auth?.scope ?? defaultConfig.auth?.scope,
       client: custom.auth?.client,
+      discoverEndpoints: custom.auth?.discoverEndpoints,
     },
     form: {
       name: {

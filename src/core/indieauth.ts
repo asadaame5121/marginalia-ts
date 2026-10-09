@@ -37,13 +37,23 @@ export interface CallbackValidationResult {
 export interface StoredAuthState {
   state: string;
   codeVerifier: string;
+  me?: string;
+  tokenEndpoint?: string;
+  clientId?: string;
+  redirectUri?: string;
 }
 
 export interface IndieAuthStorage {
   getUser(): IndieAuthUser | null;
   setUser(user: IndieAuthUser): void;
   clearUser(): void;
-  saveAuthState(state: string, codeVerifier: string): void;
+  saveAuthState(
+    state: string,
+    codeVerifier: string,
+    me?: string,
+    tokenEndpoint?: string,
+    request?: { clientId: string; redirectUri: string },
+  ): void;
   getAuthState(): StoredAuthState | null;
   clearAuthState(): void;
 }
@@ -110,10 +120,10 @@ export function extractEndpointsFromHtml(
     }
 
     if (relTokens.includes("authorization_endpoint") && !result.authorizationEndpoint) {
-      result.authorizationEndpoint = resolvedHref;
+      result.authorizationEndpoint = validateEndpointUrl(resolvedHref);
     }
     if (relTokens.includes("token_endpoint") && !result.tokenEndpoint) {
-      result.tokenEndpoint = resolvedHref;
+      result.tokenEndpoint = validateEndpointUrl(resolvedHref);
     }
   }
 
@@ -128,14 +138,21 @@ export function extractEndpointsFromHeaders(
   baseUrl?: string,
 ): IndieAuthEndpoints {
   const result: IndieAuthEndpoints = {};
-  const links = linkHeader.split(",");
+  // Commas inside URI references and quoted parameters are not separators.
+  const linkRegex = /<([^>]+)>((?:[^,"<]|"(?:\\.|[^"\\])*")*)/g;
 
-  for (const link of links) {
-    const match = /<([^>]+)>;\s*rel=["']?([^"'>]+)["']?/i.exec(link.trim());
-    if (!match) continue;
-
+  for (const match of linkHeader.matchAll(linkRegex)) {
+    const parameters = match[2].matchAll(/;\s*([^;=\s]+)\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^;\s,]+))/g);
+    let rel = "";
+    for (const parameter of parameters) {
+      if (parameter[1].toLowerCase() === "rel") {
+        rel = parameter[2] ?? parameter[3];
+        break;
+      }
+    }
+    if (!rel) continue;
     const rawHref = match[1];
-    const relTokens = match[2].toLowerCase().split(/\s+/);
+    const relTokens = rel.toLowerCase().split(/\s+/);
     let resolvedHref = rawHref;
     if (baseUrl) {
       try {
@@ -146,10 +163,10 @@ export function extractEndpointsFromHeaders(
     }
 
     if (relTokens.includes("authorization_endpoint") && !result.authorizationEndpoint) {
-      result.authorizationEndpoint = resolvedHref;
+      result.authorizationEndpoint = validateEndpointUrl(resolvedHref);
     }
     if (relTokens.includes("token_endpoint") && !result.tokenEndpoint) {
-      result.tokenEndpoint = resolvedHref;
+      result.tokenEndpoint = validateEndpointUrl(resolvedHref);
     }
   }
 
@@ -209,7 +226,7 @@ export function generateState(length = 32): string {
  * 認可リクエストURLを組み立てる
  */
 export function buildAuthorizationUrl(params: IndieAuthAuthRequest): string {
-  const url = new URL(params.authorizationEndpoint);
+  const url = new URL(validateEndpointUrl(params.authorizationEndpoint));
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", params.clientId);
   url.searchParams.set("redirect_uri", params.redirectUri);
@@ -259,8 +276,14 @@ export class IndieAuthMemoryStorage implements IndieAuthStorage {
     this.user = null;
   }
 
-  saveAuthState(state: string, codeVerifier: string): void {
-    this.authState = { state, codeVerifier };
+  saveAuthState(
+    state: string,
+    codeVerifier: string,
+    me?: string,
+    tokenEndpoint?: string,
+    request?: { clientId: string; redirectUri: string },
+  ): void {
+    this.authState = { state, codeVerifier, me, tokenEndpoint, ...request };
   }
 
   getAuthState(): StoredAuthState | null {
@@ -281,9 +304,11 @@ const STORAGE_KEY_AUTH = "marginalia_indieauth_state";
 export class IndieAuthBrowserStorage implements IndieAuthStorage {
   private memoryFallback = new IndieAuthMemoryStorage();
 
+  constructor(private win: Window | undefined = typeof window !== "undefined" ? window : undefined) {}
+
   private isLocalStorageAvailable(): boolean {
     try {
-      return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+      return !!this.win && typeof this.win.localStorage !== "undefined";
     } catch {
       return false;
     }
@@ -292,7 +317,7 @@ export class IndieAuthBrowserStorage implements IndieAuthStorage {
   getUser(): IndieAuthUser | null {
     if (!this.isLocalStorageAvailable()) return this.memoryFallback.getUser();
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY_USER);
+      const raw = this.win!.localStorage.getItem(STORAGE_KEY_USER);
       return raw ? JSON.parse(raw) : null;
     } catch {
       return this.memoryFallback.getUser();
@@ -305,7 +330,7 @@ export class IndieAuthBrowserStorage implements IndieAuthStorage {
       return;
     }
     try {
-      window.localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
+      this.win!.localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(user));
     } catch {
       this.memoryFallback.setUser(user);
     }
@@ -317,31 +342,37 @@ export class IndieAuthBrowserStorage implements IndieAuthStorage {
       return;
     }
     try {
-      window.localStorage.removeItem(STORAGE_KEY_USER);
+      this.win!.localStorage.removeItem(STORAGE_KEY_USER);
     } catch {
       this.memoryFallback.clearUser();
     }
   }
 
-  saveAuthState(state: string, codeVerifier: string): void {
+  saveAuthState(
+    state: string,
+    codeVerifier: string,
+    me?: string,
+    tokenEndpoint?: string,
+    request?: { clientId: string; redirectUri: string },
+  ): void {
     if (!this.isLocalStorageAvailable()) {
-      this.memoryFallback.saveAuthState(state, codeVerifier);
+      this.memoryFallback.saveAuthState(state, codeVerifier, me, tokenEndpoint, request);
       return;
     }
     try {
-      window.sessionStorage.setItem(
+      this.win!.sessionStorage.setItem(
         STORAGE_KEY_AUTH,
-        JSON.stringify({ state, codeVerifier }),
+        JSON.stringify({ state, codeVerifier, me, tokenEndpoint, ...request }),
       );
     } catch {
-      this.memoryFallback.saveAuthState(state, codeVerifier);
+      this.memoryFallback.saveAuthState(state, codeVerifier, me, tokenEndpoint, request);
     }
   }
 
   getAuthState(): StoredAuthState | null {
     if (!this.isLocalStorageAvailable()) return this.memoryFallback.getAuthState();
     try {
-      const raw = window.sessionStorage.getItem(STORAGE_KEY_AUTH);
+      const raw = this.win!.sessionStorage.getItem(STORAGE_KEY_AUTH);
       return raw ? JSON.parse(raw) : null;
     } catch {
       return this.memoryFallback.getAuthState();
@@ -354,11 +385,22 @@ export class IndieAuthBrowserStorage implements IndieAuthStorage {
       return;
     }
     try {
-      window.sessionStorage.removeItem(STORAGE_KEY_AUTH);
+      this.win!.sessionStorage.removeItem(STORAGE_KEY_AUTH);
     } catch {
       this.memoryFallback.clearAuthState();
     }
   }
+}
+
+export type IndieAuthDiscovery = (profileUrl: string) => Promise<IndieAuthEndpoints>;
+
+/** Resolve an endpoint and require HTTP(S); never allow executable URL schemes. */
+export function validateEndpointUrl(endpoint: string, baseUrl?: string): string {
+  const url = new URL(endpoint, baseUrl);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("IndieAuth endpoints must use HTTP(S)");
+  }
+  return url.href;
 }
 
 export interface IndieAuthClientOptions {
@@ -366,6 +408,10 @@ export interface IndieAuthClientOptions {
   redirectUri: string;
   storage?: IndieAuthStorage;
   fetchFn?: typeof fetch;
+  /** Use a site-provided discovery API for profiles that do not support CORS. */
+  discoverEndpoints?: IndieAuthDiscovery;
+  /** Browser origin used to avoid direct cross-origin HTML discovery. */
+  discoveryOrigin?: string;
   defaultAuthEndpoint?: string;
   defaultTokenEndpoint?: string;
   scope?: string;
@@ -389,6 +435,8 @@ export class IndieAuthClient {
   private defaultAuthEndpoint?: string;
   private defaultTokenEndpoint?: string;
   private scope?: string;
+  private discoverEndpoints?: IndieAuthDiscovery;
+  private discoveryOrigin?: string;
 
   constructor(options: IndieAuthClientOptions) {
     this.clientId = options.clientId;
@@ -402,6 +450,11 @@ export class IndieAuthClient {
     this.defaultAuthEndpoint = options.defaultAuthEndpoint;
     this.defaultTokenEndpoint = options.defaultTokenEndpoint;
     this.scope = options.scope;
+    this.discoverEndpoints = options.discoverEndpoints;
+    this.discoveryOrigin = options.discoveryOrigin ??
+      (typeof window !== "undefined" && !options.fetchFn ? window.location.origin : undefined);
+    if (this.defaultAuthEndpoint) this.defaultAuthEndpoint = validateEndpointUrl(this.defaultAuthEndpoint);
+    if (this.defaultTokenEndpoint) this.defaultTokenEndpoint = validateEndpointUrl(this.defaultTokenEndpoint);
   }
 
   async discover(profileUrl: string): Promise<IndieAuthEndpoints> {
@@ -410,43 +463,39 @@ export class IndieAuthClient {
       throw new Error(`Invalid profile URL: ${profileUrl}`);
     }
 
-    try {
-      const res = await this.fetchFn(canonical);
+    let endpoints: IndieAuthEndpoints;
+    if (this.discoverEndpoints) {
+      endpoints = await this.discoverEndpoints(canonical);
+    } else if (this.discoveryOrigin && new URL(canonical).origin !== this.discoveryOrigin) {
+      if (!this.defaultAuthEndpoint) {
+        throw new Error("External profiles require auth.discoverEndpoints (a same-origin discovery API)");
+      }
+      endpoints = {};
+    } else {
+      let res: Response;
+      try {
+        res = await this.fetchFn(canonical);
+        if (!res.ok) throw new Error(`Profile responded with status ${res.status}`);
+      } catch (err) {
+        if (!this.defaultAuthEndpoint) throw err;
+        return { me: canonical, authorizationEndpoint: this.defaultAuthEndpoint, tokenEndpoint: this.defaultTokenEndpoint };
+      }
+      const baseUrl = res.url || canonical;
       const linkHeader = res.headers.get("Link");
-      let endpoints: IndieAuthEndpoints = {};
-
-      if (linkHeader) {
-        endpoints = extractEndpointsFromHeaders(linkHeader, canonical);
-      }
-
+      endpoints = linkHeader ? extractEndpointsFromHeaders(linkHeader, baseUrl) : {};
       if (!endpoints.authorizationEndpoint || !endpoints.tokenEndpoint) {
-        const html = await res.text();
-        const htmlEndpoints = extractEndpointsFromHtml(html, canonical);
-        endpoints.authorizationEndpoint = endpoints.authorizationEndpoint ||
-          htmlEndpoints.authorizationEndpoint;
-        endpoints.tokenEndpoint = endpoints.tokenEndpoint ||
-          htmlEndpoints.tokenEndpoint;
+        const htmlEndpoints = extractEndpointsFromHtml(await res.text(), baseUrl);
+        endpoints.authorizationEndpoint ||= htmlEndpoints.authorizationEndpoint;
+        endpoints.tokenEndpoint ||= htmlEndpoints.tokenEndpoint;
       }
-
-      endpoints.me = canonical;
-      if (!endpoints.authorizationEndpoint && this.defaultAuthEndpoint) {
-        endpoints.authorizationEndpoint = this.defaultAuthEndpoint;
-      }
-      if (!endpoints.tokenEndpoint && this.defaultTokenEndpoint) {
-        endpoints.tokenEndpoint = this.defaultTokenEndpoint;
-      }
-
-      return endpoints;
-    } catch (err) {
-      if (this.defaultAuthEndpoint) {
-        return {
-          me: canonical,
-          authorizationEndpoint: this.defaultAuthEndpoint,
-          tokenEndpoint: this.defaultTokenEndpoint,
-        };
-      }
-      throw err;
     }
+    const authorizationEndpoint = endpoints.authorizationEndpoint || this.defaultAuthEndpoint;
+    const tokenEndpoint = endpoints.tokenEndpoint || this.defaultTokenEndpoint;
+    return {
+      me: canonical,
+      authorizationEndpoint: authorizationEndpoint ? validateEndpointUrl(authorizationEndpoint, canonical) : undefined,
+      tokenEndpoint: tokenEndpoint ? validateEndpointUrl(tokenEndpoint, canonical) : undefined,
+    };
   }
 
   async startAuth(profileUrl: string): Promise<string> {
@@ -459,9 +508,7 @@ export class IndieAuthClient {
     const verifier = generateCodeVerifier();
     const challenge = await generateCodeChallenge(verifier);
 
-    this.storage.saveAuthState(state, verifier);
-
-    return buildAuthorizationUrl({
+    const authUrl = buildAuthorizationUrl({
       authorizationEndpoint: endpoints.authorizationEndpoint,
       clientId: this.clientId,
       redirectUri: this.redirectUri,
@@ -470,6 +517,15 @@ export class IndieAuthClient {
       codeChallenge: challenge,
       scope: this.scope,
     });
+    // For identity-only authorization, the code is verified at the authorization endpoint.
+    this.storage.saveAuthState(
+      state,
+      verifier,
+      endpoints.me,
+      endpoints.tokenEndpoint || endpoints.authorizationEndpoint,
+      { clientId: this.clientId, redirectUri: this.redirectUri },
+    );
+    return authUrl;
   }
 
   async handleCallback(options: HandleCallbackOptions): Promise<IndieAuthUser> {
@@ -488,16 +544,21 @@ export class IndieAuthClient {
       throw new Error(validation.error || "Callback validation failed");
     }
 
-    const tokenEndpoint = options.tokenEndpoint || this.defaultTokenEndpoint;
+    const tokenEndpoint = authState.tokenEndpoint || options.tokenEndpoint || this.defaultTokenEndpoint;
     if (!tokenEndpoint) {
       throw new Error("Token endpoint is required to exchange authorization code");
     }
 
+    validateEndpointUrl(tokenEndpoint);
+    if (!authState.me) throw new Error("Stored auth state is missing the requested profile; sign in again");
+    // Consume the validated state before exchanging the code to prevent callback replay.
+    this.storage.clearAuthState();
+
     const body = new URLSearchParams({
       grant_type: "authorization_code",
       code: validation.code,
-      client_id: this.clientId,
-      redirect_uri: this.redirectUri,
+      client_id: authState.clientId || this.clientId,
+      redirect_uri: authState.redirectUri || this.redirectUri,
       code_verifier: authState.codeVerifier,
     });
 
@@ -515,9 +576,13 @@ export class IndieAuthClient {
     }
 
     const data = (await res.json()) as Record<string, unknown>;
-    const me = typeof data.me === "string" ? data.me : undefined;
+    const me = typeof data.me === "string" ? normalizeProfileUrl(data.me) : null;
     if (!me) {
       throw new Error("Response from token endpoint did not contain 'me'");
+    }
+
+    if (me !== authState.me) {
+      throw new Error("Returned identity does not match the requested profile");
     }
 
     const profile = (typeof data.profile === "object" && data.profile !== null)
@@ -533,9 +598,27 @@ export class IndieAuthClient {
     };
 
     this.storage.setUser(user);
-    this.storage.clearAuthState();
 
     return user;
+  }
+
+  /** Process only redirects for an outstanding request on the configured callback page. */
+  async handleRedirect(callbackUrl: string): Promise<boolean> {
+    const url = new URL(callbackUrl);
+    const authState = this.storage.getAuthState();
+    const redirect = new URL(authState?.redirectUri || this.redirectUri);
+    if (url.origin !== redirect.origin || url.pathname !== redirect.pathname ||
+      !authState ||
+      (!url.searchParams.has("code") && !url.searchParams.has("error"))) return false;
+    if (url.searchParams.has("error")) {
+      if (url.searchParams.get("state") !== authState.state) {
+        throw new Error("State mismatch (possible CSRF)");
+      }
+      this.storage.clearAuthState();
+      throw new Error(`IndieAuth authorization failed: ${url.searchParams.get("error")}`);
+    }
+    await this.handleCallback({ code: url.searchParams.get("code") || "", state: url.searchParams.get("state") || "" });
+    return true;
   }
 
   getUser(): IndieAuthUser | null {

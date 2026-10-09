@@ -70,7 +70,7 @@ Deno.test("IndieAuthClient - startAuth: 認可URLを構築し、stateとverifier
 
 Deno.test("IndieAuthClient - handleCallback: 認証コード交換とユーザー保存", async () => {
   const storage = new IndieAuthMemoryStorage();
-  storage.saveAuthState("test-state", "test-verifier");
+  storage.saveAuthState("test-state", "test-verifier", "https://alice.example.com/");
 
   // トークンエンドポイントへのPOSTリクエストをモック
   const customFetch = (input: string | URL | Request, init?: RequestInit) => {

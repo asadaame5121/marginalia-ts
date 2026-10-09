@@ -109,6 +109,12 @@ const marginalia = createMarginalia({
       enabled: true, // IndieAuth オプションを有効化（デフォルトは false）
       clientId: window.location.origin,
       redirectUri: window.location.href,
+      // サイト側で実装する同一オリジンのディスカバリーAPI
+      discoverEndpoints: async (profileUrl) => {
+        const res = await fetch(`/api/indieauth/discover?me=${encodeURIComponent(profileUrl)}`);
+        if (!res.ok) throw new Error("プロフィールの認証先を取得できませんでした。");
+        return res.json();
+      },
     },
   },
   onAnnotate: async (annotation) => {
@@ -121,6 +127,36 @@ const marginalia = createMarginalia({
   },
 });
 ```
+
+認証先からこのページに戻ると、保存した state・PKCE verifier・プロフィール URL・
+エンドポイントを使ってコードを交換し、ユーザーを保存します。成功時には URL から
+`code` と `state` を除去し、他のクエリとハッシュは保持します。認証失敗は
+`onError` とコメントフォームのエラー欄に通知され、未認証での投稿も引き続き可能です。
+戻り先ページでも同じ設定で `createMarginalia` と `onAnnotate` を初期化してください。
+
+外部プロフィールの HTML は通常 CORS に対応していないため、上の
+`/api/indieauth/discover` は **導入サイト側で実装が必要**です。このライブラリや
+デモにはサーバー実装は含まれません。API は `me` のプロフィールをサーバー側で取得し、
+HTML または Link ヘッダーを解析して、次の JSON を返します。
+
+```json
+{
+  "authorizationEndpoint": "https://auth.example.com/auth",
+  "tokenEndpoint": "https://auth.example.com/token"
+}
+```
+
+サーバー側では HTTP(S) の公開 URL のみを取得し、プライベート IP・ローカルホストへの
+接続を拒否してください。リダイレクト先にも同じ検証を適用し、取得サイズ・時間・回数に
+上限を設定してください。返されたエンドポイントもクライアント側で HTTP(S) を検証します。
+API が返す `me` は採用せず、認証開始時に入力した正規化済み URL とコード交換で返る
+`me` の一致を確認します。プロフィールの別名・異なる URL への変更は許可しません。
+
+特定の認証サービスを使うサイトでは `defaultAuthEndpoint` / `defaultTokenEndpoint` を
+設定できます。より細かい取得処理は `auth.client` に独自の `IndieAuthClient` を渡し、
+`discoverEndpoints` または `fetchFn` で実装できます。外部プロフィールに対する既定 UI の
+直接取得は行わず、フックも認証先設定もない場合は設定を促すエラーを表示します。
+コード交換先にはブラウザから POST できる CORS 対応が必要です。
 
 ---
 

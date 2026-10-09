@@ -75,7 +75,7 @@
     </label>
     <label style="display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer;">
       <input type="checkbox" id="toggle-indieauth-feature">
-      IndieAuth認証オプション（任意）の表示
+      IndieAuth認証オプション（任意）の表示（外部プロフィールにはディスカバリーAPIが必要）
     </label>
     <button class="btn-reset" id="btn-clear-storage">保存データをクリア</button>
   </div>
@@ -87,6 +87,7 @@
     const postContent = document.getElementById("post-content");
     const toggleComment = document.getElementById("toggle-comment-feature");
     const toggleIndieAuth = document.getElementById("toggle-indieauth-feature");
+    toggleIndieAuth.checked = sessionStorage.getItem("marginalia_demo_indieauth") === "true";
 
     // 疑似 Deno KV (localStorage)
     function loadSavedAnnotations() {
@@ -120,6 +121,12 @@
           },
           auth: {
             enabled: toggleIndieAuth.checked,
+            // READMEの契約でサイト側に実装するAPI。静的デモのみでは外部認証はできません。
+            discoverEndpoints: async (profileUrl) => {
+              const res = await fetch(`/api/indieauth/discover?me=${encodeURIComponent(profileUrl)}`);
+              if (!res.ok) throw new Error("IndieAuthディスカバリーAPIを設定してください。");
+              return res.json();
+            },
           },
         },
         onAnnotate: async (annotation) => {
@@ -135,7 +142,10 @@
     initMarginalia();
 
     toggleComment.addEventListener("change", initMarginalia);
-    toggleIndieAuth.addEventListener("change", initMarginalia);
+    toggleIndieAuth.addEventListener("change", () => {
+      sessionStorage.setItem("marginalia_demo_indieauth", String(toggleIndieAuth.checked));
+      initMarginalia();
+    });
 
     // クリアボタン
     document.getElementById("btn-clear-storage").addEventListener("click", () => {
