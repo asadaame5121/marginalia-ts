@@ -299,6 +299,67 @@ button.marginalia-badge:hover {
   cursor: pointer;
 }
 
+/* IndieAuth セクション */
+.marginalia-indieauth-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.marginalia-indieauth-login-box {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.marginalia-indieauth-input {
+  flex: 1;
+}
+
+.marginalia-indieauth-btn-signin {
+  white-space: nowrap;
+  background: var(--marginalia-primary);
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.marginalia-indieauth-btn-signin:hover {
+  background: var(--marginalia-primary-hover);
+}
+
+.marginalia-indieauth-user-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-weight: 500;
+  color: var(--marginalia-text-main);
+  padding: 2px 4px;
+}
+
+.marginalia-indieauth-btn-signout {
+  background: transparent;
+  border: none;
+  color: #dc2626;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 2px 4px;
+}
+
+.marginalia-indieauth-btn-signout:hover {
+  opacity: 0.8;
+}
+
 @keyframes marginalia-fade-in {
   from {
     opacity: 0;

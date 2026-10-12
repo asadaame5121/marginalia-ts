@@ -4,6 +4,9 @@
       "enabled": true
     }
   },
+  "auth": {
+    "enabled": false
+  },
   "form": {
     "name": {
       "placeholder": "名前を入力（必須）",
@@ -22,6 +25,11 @@
     "nameRequired": "名前を入力してください。",
     "commentRequired": "コメントを入力してください。",
     "invalidUrl": "有効なURLを入力してください (例: https://example.com)。",
-    "saveFailed": "保存に失敗しました。再試行してください。"
+    "saveFailed": "保存に失敗しました。再試行してください。",
+    "indieAuthSignInPrompt": "IndieAuthで認証 (任意)",
+    "indieAuthSignInButton": "サインイン",
+    "indieAuthSignOutButton": "サインアウト",
+    "indieAuthProfilePlaceholder": "https://yourdomain.com",
+    "indieAuthInvalidUrl": "有効なIndieAuth URLを入力してください。"
   }
 }
