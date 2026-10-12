@@ -1,13 +1,11 @@
-import {
-  extractEndpointsFromHeaders,
-  extractEndpointsFromHtml,
-} from "../../src/core/indieauth.ts";
+import { IndieAuthClient } from "../../src/core/indieauth.ts";
 
 interface AuthorizationCode {
   me: string;
   clientId: string;
   redirectUri: string;
   challenge: string;
+  scope: string;
 }
 
 /** Local HTTP fixture, never a production discovery proxy or identity provider. */
@@ -41,6 +39,33 @@ export function startIndieAuthMockApi() {
         },
       });
     }
+    if (url.pathname === "/profile/unquoted") {
+      return new Response(
+        "<link rel=authorization_endpoint href=/authorize><link href=/token rel=token_endpoint>",
+        { headers: { "Content-Type": "text/html" } },
+      );
+    }
+    if (url.pathname === "/profile/metadata-html") {
+      return new Response("<link rel=indieauth-metadata href=/metadata>", {
+        headers: { "Content-Type": "text/html" },
+      });
+    }
+    if (url.pathname === "/profile/metadata-header") {
+      return new Response("", {
+        headers: {
+          Link:
+            '</metadata>; type="application/json"; rel="indieauth-metadata"',
+        },
+      });
+    }
+    if (url.pathname === "/metadata") {
+      return Response.json({
+        issuer: origin,
+        authorization_endpoint: `${origin}/authorize`,
+        token_endpoint: `${origin}/token`,
+        code_challenge_methods_supported: ["S256"],
+      });
+    }
     if (url.pathname === "/authorize" && request.method === "GET") {
       const params = url.searchParams;
       if (
@@ -58,6 +83,7 @@ export function startIndieAuthMockApi() {
         clientId: params.get("client_id")!,
         redirectUri: params.get("redirect_uri")!,
         challenge: params.get("code_challenge")!,
+        scope: params.get("scope") || "",
       });
       const callback = new URL(params.get("redirect_uri")!);
       callback.searchParams.set("code", code);
@@ -67,7 +93,10 @@ export function startIndieAuthMockApi() {
         headers: { Location: callback.href },
       });
     }
-    if (url.pathname === "/token" && request.method === "POST") {
+    if (
+      ["/token", "/authorize"].includes(url.pathname) &&
+      request.method === "POST"
+    ) {
       const cors = { "Access-Control-Allow-Origin": "*" };
       if (
         !request.headers.get("content-type")?.startsWith(
@@ -93,7 +122,13 @@ export function startIndieAuthMockApi() {
         !authorization || params.get("grant_type") !== "authorization_code" ||
         params.get("client_id") !== authorization.clientId ||
         params.get("redirect_uri") !== authorization.redirectUri ||
-        challenge !== authorization.challenge
+        challenge !== authorization.challenge ||
+        url.pathname !==
+          (authorization.scope.split(/\s+/).some((scope) =>
+              scope && scope !== "profile" && scope !== "email"
+            )
+            ? "/token"
+            : "/authorize")
       ) {
         return Response.json({ error: "invalid_grant" }, {
           status: 400,
@@ -125,19 +160,19 @@ export function startIndieAuthMockApi() {
     requests.push(`${request.method} ${url.pathname}`);
     if (url.pathname === "/api/indieauth/discover") {
       const profile = url.searchParams.get("me");
-      // This fixture only retrieves its own two profiles, never arbitrary URLs.
+      // Only retrieve this fixture's known profiles, never arbitrary URLs.
       if (
-        profile !== `${origin}/profile/html` &&
-        profile !== `${origin}/profile/header`
+        !profile ||
+        !["html", "header", "unquoted", "metadata-html", "metadata-header"]
+          .some((kind) => profile === `${origin}/profile/${kind}`)
       ) {
         return new Response("Unknown mock profile", { status: 400 });
       }
-      const res = await fetch(profile);
-      const html = await res.text();
-      const endpoints = {
-        ...extractEndpointsFromHtml(html, profile),
-        ...extractEndpointsFromHeaders(res.headers.get("Link") || "", profile),
-      };
+      const discovery = new IndieAuthClient({
+        clientId: origin,
+        redirectUri: origin,
+      });
+      const endpoints = await discovery.discover(profile);
       return Response.json(endpoints);
     }
     if (url.pathname === "/article") return new Response("Mock article");

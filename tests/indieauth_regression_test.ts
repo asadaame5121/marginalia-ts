@@ -185,7 +185,7 @@ Deno.test("Callback survives a new client and binds canonical identity and disco
   const authUrl = new URL(await first.startAuth("https://ALICE.example"));
   const pending = storage.getAuthState()!;
   assertEquals(pending.me, me);
-  assertEquals(pending.tokenEndpoint, tokenEndpoint);
+  assertEquals(pending.tokenEndpoint, authorizationEndpoint);
   let postCount = 0;
   const second = new IndieAuthClient({
     clientId,
@@ -195,7 +195,7 @@ Deno.test("Callback survives a new client and binds canonical identity and disco
     storage,
     fetchFn: (url, init) => {
       postCount++;
-      assertEquals(url, tokenEndpoint);
+      assertEquals(url, authorizationEndpoint);
       assertEquals(init?.method, "POST");
       const body = new URLSearchParams(String(init?.body));
       assertEquals(body.get("code_verifier"), pending.codeVerifier);
@@ -357,7 +357,7 @@ Deno.test("createMarginalia automatically finishes browser-stored redirects and 
   const annotations: W3CAnnotation[] = [];
   let resolveExchange!: (response: Response) => void;
   globalThis.fetch = (url, init) => {
-    assertEquals(url, tokenEndpoint);
+    assertEquals(url, authorizationEndpoint);
     assertEquals(init?.method, "POST");
     return new Promise((resolve) => {
       resolveExchange = resolve;

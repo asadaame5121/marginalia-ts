@@ -137,7 +137,10 @@ const marginalia = createMarginalia({
 外部プロフィールの HTML は通常 CORS に対応していないため、上の
 `/api/indieauth/discover` は **導入サイト側で実装が必要**です。このライブラリや
 デモにはサーバー実装は含まれません。API は `me` のプロフィールをサーバー側で取得し、
-HTML または Link ヘッダーを解析して、次の JSON を返します。
+HTML または Link ヘッダーの `rel="indieauth-metadata"` を優先し、参照先の JSON の
+`authorization_endpoint` / `token_endpoint` を取得して、次の JSON を返します。
+メタデータのリンクがない場合は、従来の `authorization_endpoint` / `token_endpoint` の
+リンクを解析します。組み込みのディスカバリーもこの順序に対応しています。
 
 ```json
 {
@@ -156,7 +159,12 @@ API が返す `me` は採用せず、認証開始時に入力した正規化済�
 設定できます。より細かい取得処理は `auth.client` に独自の `IndieAuthClient` を渡し、
 `discoverEndpoints` または `fetchFn` で実装できます。外部プロフィールに対する既定 UI の
 直接取得は行わず、フックも認証先設定もない場合は設定を促すエラーを表示します。
-コード交換先にはブラウザから POST できる CORS 対応が必要です。
+scope を省略する場合、空白のみの場合、または `profile` / `email` のみを指定する場合は、
+本人確認用のコードを認可エンドポイントで交換します。`create` などリソースアクセス用の
+scope を含む場合はトークンエンドポイントを使い、取得できない場合は認証開始時にエラーになります。
+交換先は認証開始時に保存され、リダイレクト後の設定変更の影響を受けません。
+この選択は [IndieAuth のコード交換規則](https://indieauth.spec.indieweb.org/#redeeming-the-authorization-code)
+に基づきます。コード交換先にはブラウザから POST できる CORS 対応が必要です。
 
 ### モック API による認証テスト
 

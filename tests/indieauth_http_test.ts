@@ -8,7 +8,15 @@ import {
 import { createMarginalia } from "../src/index.ts";
 import { startIndieAuthMockApi } from "./fixtures/indieauth_mock_api.ts";
 
-for (const kind of ["html", "header"]) {
+for (
+  const kind of [
+    "html",
+    "header",
+    "unquoted",
+    "metadata-html",
+    "metadata-header",
+  ]
+) {
   Deno.test(`IndieAuth HTTP - ${kind} discovery, authorization redirect and PKCE exchange after reload`, async () => {
     const api = startIndieAuthMockApi();
     try {
@@ -32,12 +40,13 @@ for (const kind of ["html", "header"]) {
       assertEquals(storage.getAuthState(), null);
       assertEquals(api.requests, [
         `GET /profile/${kind}`,
+        ...(kind.startsWith("metadata-") ? ["GET /metadata"] : []),
         "GET /authorize",
-        "POST /token",
+        "POST /authorize",
       ]);
       assertEquals(await reloaded.handleRedirect(callback.href), false);
       assertEquals(
-        api.requests.filter((request) => request === "POST /token").length,
+        api.requests.filter((request) => request === "POST /authorize").length,
         1,
       );
       reloaded.signOut();
@@ -92,7 +101,7 @@ Deno.test("IndieAuth HTTP - site discovery API and automatic toolbar callback pe
       "GET /api/indieauth/discover",
       "GET /profile/html",
       "GET /authorize",
-      "POST /token",
+      "POST /authorize",
     ]);
   } finally {
     instance?.destroy();
@@ -119,7 +128,7 @@ Deno.test("IndieAuth HTTP - mismatched state never reaches token API; substitute
       Error,
       "State mismatch",
     );
-    assertEquals(api.requests.includes("POST /token"), false);
+    assertEquals(api.requests.includes("POST /authorize"), false);
     api.setResponseMe(`${api.origin}/someone-else`);
     await assertRejects(
       () => client.handleRedirect(callback.href),
@@ -128,7 +137,7 @@ Deno.test("IndieAuth HTTP - mismatched state never reaches token API; substitute
     );
     assertEquals(client.getUser(), null);
     assertEquals(
-      api.requests.filter((request) => request === "POST /token").length,
+      api.requests.filter((request) => request === "POST /authorize").length,
       1,
     );
   } finally {
@@ -177,3 +186,46 @@ Deno.test("IndieAuth HTTP - token API enforces PKCE and a failed exchange leaves
     await api.close();
   }
 });
+
+for (
+  const scope of [
+    undefined,
+    " \t ",
+    "profile email",
+    "create",
+    "profile create",
+  ]
+) {
+  Deno.test(`IndieAuth HTTP - exchange route matches scope ${JSON.stringify(scope)}`, async () => {
+    const api = startIndieAuthMockApi();
+    try {
+      const storage = new IndieAuthMemoryStorage();
+      const client = new IndieAuthClient({
+        clientId: api.siteOrigin,
+        redirectUri: api.redirectUri,
+        storage,
+        scope,
+      });
+      const callback = await api.authorize(
+        await client.startAuth(api.profileUrl),
+      );
+      const endpoint = scope?.includes("create") ? "/token" : "/authorize";
+      assertEquals(
+        storage.getAuthState()?.tokenEndpoint,
+        `${api.origin}${endpoint}`,
+      );
+      // Reload with a different scope: the original saved exchange route must win.
+      const reloaded = new IndieAuthClient({
+        clientId: api.siteOrigin,
+        redirectUri: api.redirectUri,
+        storage,
+        scope: "different",
+      });
+      assertEquals(await reloaded.handleRedirect(callback.href), true);
+      assertEquals(reloaded.getUser()?.me, api.profileUrl);
+      assertEquals(api.requests.at(-1), `POST ${endpoint}`);
+    } finally {
+      await api.close();
+    }
+  });
+}

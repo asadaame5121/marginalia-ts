@@ -12,6 +12,7 @@ export interface IndieAuthUser {
 }
 
 export interface IndieAuthEndpoints {
+  metadataEndpoint?: string;
   authorizationEndpoint?: string;
   tokenEndpoint?: string;
   me?: string;
@@ -98,18 +99,20 @@ export function extractEndpointsFromHtml(
   baseUrl?: string,
 ): IndieAuthEndpoints {
   const result: IndieAuthEndpoints = {};
-  const linkRegex = /<(?:link|a)\s+([^>]+)>/gi;
+  const linkRegex = /<(?:link|a)\s+((?:"[^"]*"|'[^']*'|[^'">])*)>/gi;
 
   let match: RegExpExecArray | null;
   while ((match = linkRegex.exec(html)) !== null) {
-    const attrs = match[1];
-    const relMatch = /rel=["']?([^"'>]+)["']?/i.exec(attrs);
-    const hrefMatch = /href=["']?([^"'>]+)["']?/i.exec(attrs);
-
-    if (!relMatch || !hrefMatch) continue;
-
-    const relTokens = relMatch[1].toLowerCase().split(/\s+/);
-    const rawHref = hrefMatch[1];
+    const attributes = new Map<string, string>();
+    const attrRegex = /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\t\n\f\r >]+)))?/g;
+    for (const attr of match[1].matchAll(attrRegex)) {
+      const name = attr[1].toLowerCase();
+      if (!attributes.has(name)) attributes.set(name, attr[2] ?? attr[3] ?? attr[4] ?? "");
+    }
+    const rel = attributes.get("rel");
+    const rawHref = attributes.get("href");
+    if (!rel || !rawHref) continue;
+    const relTokens = rel.toLowerCase().split(/\s+/);
     let resolvedHref = rawHref;
     if (baseUrl) {
       try {
@@ -119,6 +122,9 @@ export function extractEndpointsFromHtml(
       }
     }
 
+    if (relTokens.includes("indieauth-metadata") && !result.metadataEndpoint) {
+      result.metadataEndpoint = validateEndpointUrl(resolvedHref);
+    }
     if (relTokens.includes("authorization_endpoint") && !result.authorizationEndpoint) {
       result.authorizationEndpoint = validateEndpointUrl(resolvedHref);
     }
@@ -162,6 +168,9 @@ export function extractEndpointsFromHeaders(
       }
     }
 
+    if (relTokens.includes("indieauth-metadata") && !result.metadataEndpoint) {
+      result.metadataEndpoint = validateEndpointUrl(resolvedHref);
+    }
     if (relTokens.includes("authorization_endpoint") && !result.authorizationEndpoint) {
       result.authorizationEndpoint = validateEndpointUrl(resolvedHref);
     }
@@ -483,11 +492,37 @@ export class IndieAuthClient {
       const baseUrl = res.url || canonical;
       const linkHeader = res.headers.get("Link");
       endpoints = linkHeader ? extractEndpointsFromHeaders(linkHeader, baseUrl) : {};
-      if (!endpoints.authorizationEndpoint || !endpoints.tokenEndpoint) {
+      if (!endpoints.metadataEndpoint) {
         const htmlEndpoints = extractEndpointsFromHtml(await res.text(), baseUrl);
+        endpoints.metadataEndpoint = htmlEndpoints.metadataEndpoint;
         endpoints.authorizationEndpoint ||= htmlEndpoints.authorizationEndpoint;
         endpoints.tokenEndpoint ||= htmlEndpoints.tokenEndpoint;
+      } else {
+        await res.body?.cancel();
       }
+    }
+    if (endpoints.metadataEndpoint) {
+      const metadataUrl = validateEndpointUrl(endpoints.metadataEndpoint, canonical);
+      const response = await this.fetchFn(metadataUrl, { headers: { Accept: "application/json" } });
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new Error(`IndieAuth metadata responded with status ${response.status}`);
+      }
+      const metadata: unknown = await response.json();
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+        throw new Error("Invalid IndieAuth metadata document");
+      }
+      const data = metadata as Record<string, unknown>;
+      if (typeof data.authorization_endpoint !== "string" || !data.authorization_endpoint) {
+        throw new Error("IndieAuth metadata is missing authorization_endpoint");
+      }
+      if (data.token_endpoint !== undefined && typeof data.token_endpoint !== "string") {
+        throw new Error("Invalid token_endpoint in IndieAuth metadata");
+      }
+      endpoints = {
+        authorizationEndpoint: validateEndpointUrl(data.authorization_endpoint),
+        tokenEndpoint: typeof data.token_endpoint === "string" ? validateEndpointUrl(data.token_endpoint) : undefined,
+      };
     }
     const authorizationEndpoint = endpoints.authorizationEndpoint || this.defaultAuthEndpoint;
     const tokenEndpoint = endpoints.tokenEndpoint || this.defaultTokenEndpoint;
@@ -504,6 +539,12 @@ export class IndieAuthClient {
       throw new Error(`Authorization endpoint not found for ${profileUrl}`);
     }
 
+    // profile/email request identity information; other scopes request resource access.
+    const scope = this.scope?.trim() || undefined;
+    const needsToken = scope?.split(/\s+/).some((value) => value !== "profile" && value !== "email");
+    const exchangeEndpoint = needsToken ? endpoints.tokenEndpoint : endpoints.authorizationEndpoint;
+    if (!exchangeEndpoint) throw new Error("Token endpoint is required for resource access scopes");
+
     const state = generateState();
     const verifier = generateCodeVerifier();
     const challenge = await generateCodeChallenge(verifier);
@@ -515,14 +556,14 @@ export class IndieAuthClient {
       me: endpoints.me || profileUrl,
       state,
       codeChallenge: challenge,
-      scope: this.scope,
+      scope,
     });
     // For identity-only authorization, the code is verified at the authorization endpoint.
     this.storage.saveAuthState(
       state,
       verifier,
       endpoints.me,
-      endpoints.tokenEndpoint || endpoints.authorizationEndpoint,
+      exchangeEndpoint,
       { clientId: this.clientId, redirectUri: this.redirectUri },
     );
     return authUrl;
